@@ -26,3 +26,25 @@ thumbnails:
   enabled: true
   maxSide: 256
   quality: 75
+
+orientation:
+  enabled: true
+
+  trustedCameraModels:
+    - "Canon EOS 5D Mark II"
+
+  neverRotateExtensions:
+    - ".cr2"
+    - ".cr3"
+    - ".dng"
+    - ".raw"
+    - ".nef"
+    - ".arw"
+
+  candidateExtensions:
+    - ".jpg"
+    - ".jpeg"
+
+  allowedRotations:
+    - 90
+    - 270

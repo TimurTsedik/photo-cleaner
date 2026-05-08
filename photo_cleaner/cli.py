@@ -28,6 +28,7 @@ from photo_cleaner.infrastructure.thumbnailGenerator import (
 from photo_cleaner.services.htmlDuplicateReportService import (
     HtmlDuplicateReportService,
 )
+from photo_cleaner.infrastructure.metadataReader import MetadataReader
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="photo-cleaner")
@@ -70,7 +71,9 @@ def main() -> None:
 
     if args.command == "scan":
         scanService = ScanService(
-            FileSystemScanner(),
+            FileSystemScanner(
+                MetadataReader(),
+            ),
             repository,
         )
 
@@ -100,6 +103,7 @@ def main() -> None:
         )
 
         service.printReport()
+
     elif args.command == "build-report":
         service = HtmlDuplicateReportService(
             repository,
@@ -110,5 +114,5 @@ def main() -> None:
             config["archive"]["root"],
             config["workspace"]["path"],
             config["thumbnails"]["maxSide"],
-        config["thumbnails"]["quality"],
+            config["thumbnails"]["quality"],
         )
