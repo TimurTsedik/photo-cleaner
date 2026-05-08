@@ -1,5 +1,4 @@
 import sqlite3
-from pathlib import Path
 from typing import Any
 
 
@@ -99,3 +98,108 @@ class SqlitePhotoRepository:
 
         finally:
             connection.close()
+
+    def getDuplicateSizeGroups(self) -> list[list[dict[str, Any]]]:
+        ret: list[list[dict[str, Any]]] = []
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                SELECT size
+                FROM photos
+                GROUP BY size
+                HAVING COUNT(*) > 1
+                ORDER BY size DESC
+            """)
+
+            sizes = [
+                row["size"]
+                for row in cursor.fetchall()
+            ]
+
+            for size in sizes:
+                cursor.execute("""
+                    SELECT id, relativePath, size, sha256
+                    FROM photos
+                    WHERE size = ?
+                    ORDER BY relativePath
+                """, (size,))
+
+                ret.append([
+                    dict(row)
+                    for row in cursor.fetchall()
+                ])
+
+        finally:
+            connection.close()
+
+        return ret
+
+    def updatePhotoSha256(
+        self,
+        in_photoId: str,
+        in_sha256: str,
+    ) -> None:
+        connection = sqlite3.connect(self._dbPath)
+
+        try:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                UPDATE photos
+                SET sha256 = ?
+                WHERE id = ?
+            """, (
+                in_sha256,
+                in_photoId,
+            ))
+
+            connection.commit()
+
+        finally:
+            connection.close()
+
+    def getSha256DuplicateGroups(self) -> list[list[dict[str, Any]]]:
+        ret: list[list[dict[str, Any]]] = []
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                SELECT sha256
+                FROM photos
+                WHERE sha256 IS NOT NULL
+                GROUP BY sha256
+                HAVING COUNT(*) > 1
+                ORDER BY COUNT(*) DESC
+            """)
+
+            hashes = [
+                row["sha256"]
+                for row in cursor.fetchall()
+            ]
+
+            for sha256 in hashes:
+                cursor.execute("""
+                    SELECT id, relativePath, size, sha256, mtime
+                    FROM photos
+                    WHERE sha256 = ?
+                    ORDER BY relativePath
+                """, (sha256,))
+
+                ret.append([
+                    dict(row)
+                    for row in cursor.fetchall()
+                ])
+
+        finally:
+            connection.close()
+
+        return ret

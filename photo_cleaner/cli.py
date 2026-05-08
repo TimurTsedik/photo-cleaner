@@ -10,16 +10,18 @@ from photo_cleaner.infrastructure.fileSystemScanner import (
 from photo_cleaner.infrastructure.sqlitePhotoRepository import (
     SqlitePhotoRepository,
 )
-from photo_cleaner.infrastructure.sha256FileHasher import (
-    Sha256FileHasher,
-)
 from photo_cleaner.services.scanService import (
     ScanService,
 )
-from photo_cleaner.services.hashService import (
-    HashService,
+from photo_cleaner.infrastructure.sha256FileHasher import (
+    Sha256FileHasher,
 )
-
+from photo_cleaner.services.hashDuplicateCandidatesService import (
+    HashDuplicateCandidatesService,
+)
+from photo_cleaner.services.exactDuplicateReportService import (
+    ExactDuplicateReportService,
+)
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="photo-cleaner")
@@ -29,6 +31,7 @@ def main() -> None:
         choices=[
             "scan",
             "hash-duplicates",
+            "find-duplicates",
         ],
     )
 
@@ -71,14 +74,22 @@ def main() -> None:
         )
 
         print("scan completed")
+
     elif args.command == "hash-duplicates":
-        hashService = HashService(
+        service = HashDuplicateCandidatesService(
             repository,
             Sha256FileHasher(),
         )
 
-        hashedCount = hashService.hashDuplicateSizePhotos(
+        service.hashDuplicateCandidates(
             config["archive"]["root"],
         )
 
-        print(f"hash completed, files hashed: {hashedCount}")
+        print("hash duplicates completed")
+
+    elif args.command == "find-duplicates":
+        service = ExactDuplicateReportService(
+            repository,
+    )
+
+    service.printReport()
