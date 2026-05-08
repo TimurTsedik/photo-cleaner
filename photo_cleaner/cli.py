@@ -22,6 +22,12 @@ from photo_cleaner.services.hashDuplicateCandidatesService import (
 from photo_cleaner.services.exactDuplicateReportService import (
     ExactDuplicateReportService,
 )
+from photo_cleaner.infrastructure.thumbnailGenerator import (
+    ThumbnailGenerator,
+)
+from photo_cleaner.services.htmlDuplicateReportService import (
+    HtmlDuplicateReportService,
+)
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="photo-cleaner")
@@ -32,6 +38,7 @@ def main() -> None:
             "scan",
             "hash-duplicates",
             "find-duplicates",
+            "build-report",
         ],
     )
 
@@ -90,6 +97,18 @@ def main() -> None:
     elif args.command == "find-duplicates":
         service = ExactDuplicateReportService(
             repository,
-    )
+        )
 
-    service.printReport()
+        service.printReport()
+    elif args.command == "build-report":
+        service = HtmlDuplicateReportService(
+            repository,
+            ThumbnailGenerator(),
+        )
+
+        service.buildReport(
+            config["archive"]["root"],
+            config["workspace"]["path"],
+            config["thumbnails"]["maxSide"],
+        config["thumbnails"]["quality"],
+        )
