@@ -1,0 +1,28 @@
+archive:
+  root: "/Volumes/My\ Passport/ARCHIVE/"
+
+workspace:
+  path: "./workspace"
+
+files:
+  jpegExtensions:
+    - ".jpg"
+    - ".jpeg"
+  rawExtensions:
+    - ".cr2"
+    - ".cr3"
+    - ".dng"
+
+duplicates:
+  trashDir: ".photo-cleaner-trash/duplicates"
+
+orientation:
+  processRaw: false
+  processJpeg: true
+  trustedCameraModels:
+    - "Canon EOS 5D Mark II"
+
+thumbnails:
+  enabled: true
+  maxSide: 256
+  quality: 75
