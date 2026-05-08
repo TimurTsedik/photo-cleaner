@@ -29,7 +29,7 @@ thumbnails:
 
 orientation:
   enabled: true
-
+  
   trustedCameraModels:
     - "Canon EOS 5D Mark II"
 

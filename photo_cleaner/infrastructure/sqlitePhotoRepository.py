@@ -203,3 +203,74 @@ class SqlitePhotoRepository:
             connection.close()
 
         return ret
+    def getOrientationCandidates(
+        self,
+        in_trustedCameraModels: list[str],
+        in_candidateExtensions: list[str],
+        in_neverRotateExtensions: list[str],
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        trustedCameraModels = {
+            cameraModel.strip()
+            for cameraModel in in_trustedCameraModels
+        }
+
+        candidateExtensions = {
+            extension.lower().strip()
+            for extension in in_candidateExtensions
+        }
+
+        neverRotateExtensions = {
+            extension.lower().strip()
+            for extension in in_neverRotateExtensions
+        }
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    relativePath,
+                    extension,
+                    size,
+                    sha256,
+                    width,
+                    height,
+                    cameraModel,
+                    exifOrientation
+                FROM photos
+                WHERE isJpeg = 1
+                ORDER BY relativePath
+            """)
+
+            for row in cursor.fetchall():
+                item = dict(row)
+
+                extension = str(item["extension"]).lower().strip()
+                cameraModel = item["cameraModel"]
+
+                if extension in neverRotateExtensions:
+                    continue
+
+                if extension not in candidateExtensions:
+                    continue
+
+                if cameraModel is not None:
+                    normalizedCameraModel = str(cameraModel).strip()
+
+                    if normalizedCameraModel in trustedCameraModels:
+                        continue
+
+                    item["cameraModel"] = normalizedCameraModel
+
+                ret.append(item)
+
+        finally:
+            connection.close()
+
+        return ret

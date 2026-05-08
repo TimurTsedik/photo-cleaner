@@ -27,6 +27,7 @@ from photo_cleaner.infrastructure.thumbnailGenerator import (
 )
 from photo_cleaner.services.htmlDuplicateReportService import (
     HtmlDuplicateReportService,
+    HtmlOrientationReportService,
 )
 from photo_cleaner.infrastructure.metadataReader import MetadataReader
 
@@ -40,6 +41,7 @@ def main() -> None:
             "hash-duplicates",
             "find-duplicates",
             "build-report",
+            "build-orientation-report",
         ],
     )
 
@@ -115,4 +117,20 @@ def main() -> None:
             config["workspace"]["path"],
             config["thumbnails"]["maxSide"],
             config["thumbnails"]["quality"],
+        )
+
+    elif args.command == "build-orientation-report":
+        service = HtmlOrientationReportService(
+            repository,
+            ThumbnailGenerator(),
+        )
+
+        service.buildReport(
+            config["archive"]["root"],
+            config["workspace"]["path"],
+            config["thumbnails"]["maxSide"],
+            config["thumbnails"]["quality"],
+            config["orientation"]["trustedCameraModels"],
+            config["orientation"]["candidateExtensions"],
+            config["orientation"]["neverRotateExtensions"],
         )
