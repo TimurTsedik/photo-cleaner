@@ -29,11 +29,11 @@ pip install -r requirements.txt
 | Команда | Назначение |
 |--------|------------|
 | `python -m photo_cleaner scan --config config.yaml` | Сканирование архива в SQLite (учитывает `orientation.excludedPathPrefixes`: абсолютные пути или относительные к корню архива) |
+| `python -m photo_cleaner build_duplicates_report --config config.yaml` | HTML-отчёт по дубликатам `reports/duplicates.html` |
 | `python -m photo_cleaner build-orientation-dataset --config config.yaml` | Датасет `train/val/test` с классами `0`, `90`, `270` без утечки (сплит по `id` снимка) |
 | `python -m photo_cleaner train-orientation-model --config config.yaml` | Обучение EfficientNet-B0, checkpoint и `metrics.json` |
 | `python -m photo_cleaner predict-orientation --config config.yaml --image /path/to/file.jpg` | Инференс одного файла (JSON в stdout) |
 | `python -m photo_cleaner build-orientation-ml-report --config config.yaml` | HTML `reports/orientation_ml.html`, все кандидаты с превью и действием |
-| `python -m photo_cleaner build-face-orientation-report --config config.yaml` | Прежний отчёт через OpenRouter / legacy-детектор (`face_orientation.html`) |
 
 Порядок работы: `scan` → `build-orientation-dataset` → `train-orientation-model` → `build-orientation-ml-report`. До ручной проверки не выполняйте массовый автоповорот файлов.
 

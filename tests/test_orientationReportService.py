@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from PIL import Image
@@ -105,3 +106,10 @@ class OrientationReportServiceTests(unittest.TestCase):
             reportText = reportPath.read_text(encoding="utf-8")
             self.assertIn("rotate90", reportText)
             self.assertIn("Candidate #1", reportText)
+
+            actionsPath = workspacePath / "actions.json"
+            self.assertTrue(actionsPath.is_file())
+            actionsPayload = json.loads(
+                actionsPath.read_text(encoding="utf-8"),
+            )
+            self.assertIn("id-test", actionsPayload["orientation"]["items"])

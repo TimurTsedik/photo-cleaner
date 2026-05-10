@@ -55,20 +55,6 @@ orientation:
     - 90
     - 270
 
-  openrouter:
-    model: "baidu/qianfan-ocr-fast:free"
-    endpoint: "https://openrouter.ai/api/v1/chat/completions"
-    apiKey: "YOUR_OPENROUTER_API_KEY"
-    timeoutSeconds: 120
-    maxRateLimitWaitSeconds: 15
-    maxRateLimitRetries: 1
-    debugDumpEnabled: true
-    debugDumpDir: "./workspace_test/debug"
-    minConfidence: 0.85
-    maxImageSide: 448
-    comparePanelSide: 128
-    jpegQuality: 65
-
   ml:
     datasetCameraModel: "Canon EOS 5D Mark II"
     datasetRoot: "./workspace_test/orientation_dataset"

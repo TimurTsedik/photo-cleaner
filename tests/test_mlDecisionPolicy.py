@@ -13,11 +13,24 @@ class MlDecisionPolicyTests(TestCase):
             0.25,
         )
 
-        self.assertEqual(ret["suggestedAction"], "rotate90")
-        self.assertEqual(ret["suggestedRotation"], 90)
+        self.assertEqual(ret["suggestedAction"], "rotate270")
+        self.assertEqual(ret["suggestedRotation"], 270)
         self.assertEqual(ret["decisionReason"], "ml_high_confidence")
         self.assertGreaterEqual(float(ret["confidence"]), 0.95)
         self.assertGreaterEqual(float(ret["margin"]), 0.25)
+
+    def test_applyMlDecisionPolicy_invertsRotate270Class(
+        self,
+    ) -> None:
+        ret = applyMlDecisionPolicy(
+            {0: 0.02, 90: 0.01, 270: 0.97},
+            0.95,
+            0.25,
+        )
+
+        self.assertEqual(ret["suggestedAction"], "rotate90")
+        self.assertEqual(ret["suggestedRotation"], 90)
+        self.assertEqual(ret["decisionReason"], "ml_high_confidence")
 
     def test_applyMlDecisionPolicy_manualReviewWhenMarginLow(
         self,

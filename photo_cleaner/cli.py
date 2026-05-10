@@ -34,12 +34,6 @@ from photo_cleaner.infrastructure.metadataReader import MetadataReader
 from photo_cleaner.infrastructure.exifToolMetadataReader import (
     ExifToolMetadataReader,
 )
-from photo_cleaner.infrastructure.faceOrientationDetector import (
-    FaceOrientationDetector,
-)
-from photo_cleaner.services.faceOrientationReportService import (
-    FaceOrientationReportService,
-)
 from photo_cleaner.services.orientationReportService import OrientationReportService
 
 
@@ -53,8 +47,8 @@ def main() -> None:
             "hash-duplicates",
             "find-duplicates",
             "build-report",
+            "build_duplicates_report",
             "build-orientation-report",
-            "build-face-orientation-report",
             "build-orientation-dataset",
             "train-orientation-model",
             "predict-orientation",
@@ -137,7 +131,7 @@ def main() -> None:
 
         service.printReport()
 
-    elif args.command == "build-report":
+    elif args.command in {"build-report", "build_duplicates_report"}:
         service = HtmlDuplicateReportService(
             repository,
             ThumbnailGenerator(),
@@ -165,26 +159,6 @@ def main() -> None:
             config["orientation"]["neverRotateExtensions"],
             config["orientation"]["excludedPathPrefixes"],
         )
-    elif args.command == "build-face-orientation-report":
-        faceDetectionConfig = (
-            config["orientation"].get("openrouter", {})
-            if "orientation" in config
-            else {}
-        )
-
-        service = FaceOrientationReportService(
-            repository,
-            FaceOrientationDetector(faceDetectionConfig),
-        )
-
-        service.buildReport(
-            config["archive"]["root"],
-            config["workspace"]["path"],
-            config["orientation"]["candidateExtensions"],
-            config["orientation"]["neverRotateExtensions"],
-            config["orientation"].get("trustedCameraModels", []),
-        )
-
     elif args.command == "build-orientation-dataset":
         from photo_cleaner.ml.orientationDatasetBuilder import (
             buildOrientationDatasetFromArchive,

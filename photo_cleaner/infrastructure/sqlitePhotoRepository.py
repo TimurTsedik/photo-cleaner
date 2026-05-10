@@ -1,4 +1,6 @@
 import sqlite3
+import re
+from pathlib import Path
 from typing import Any
 
 
@@ -322,6 +324,7 @@ class SqlitePhotoRepository:
         in_candidateExtensions: list[str],
         in_neverRotateExtensions: list[str],
         in_trustedCameraModels: list[str] | None = None,
+        in_excludedPhotoIds: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         ret: list[dict[str, Any]] = []
 
@@ -342,6 +345,7 @@ class SqlitePhotoRepository:
                 for cameraModel in in_trustedCameraModels
                 if str(cameraModel).strip()
             }
+        excludedPhotoIds = in_excludedPhotoIds or set()
 
         connection = sqlite3.connect(self._dbPath)
         connection.row_factory = sqlite3.Row
@@ -365,6 +369,9 @@ class SqlitePhotoRepository:
 
             for row in cursor.fetchall():
                 item = dict(row)
+                photoId = str(item.get("id") or "")
+                if photoId in excludedPhotoIds:
+                    continue
                 extension = str(item["extension"]).lower().strip()
 
                 if extension in neverRotateExtensions:
@@ -384,4 +391,146 @@ class SqlitePhotoRepository:
         finally:
             connection.close()
 
+        return ret
+
+    def getDuplicateCandidatePhotoIds(
+        self,
+    ) -> set[str]:
+        ret: set[str] = set()
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT id
+                FROM photos
+                WHERE sha256 IS NOT NULL
+                AND sha256 IN (
+                    SELECT sha256
+                    FROM photos
+                    WHERE sha256 IS NOT NULL
+                    GROUP BY sha256
+                    HAVING COUNT(*) > 1
+                )
+            """)
+
+            for row in cursor.fetchall():
+                ret.add(str(row["id"]))
+        finally:
+            connection.close()
+
+        return ret
+
+    def getSimilarDuplicateGroups(
+        self,
+        in_excludedPhotoIds: set[str] | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        ret: list[list[dict[str, Any]]] = []
+
+        excludedPhotoIds = in_excludedPhotoIds or set()
+        groupedItems: dict[str, list[dict[str, Any]]] = {}
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT
+                    id,
+                    relativePath,
+                    extension,
+                    size,
+                    sha256,
+                    mtime,
+                    width,
+                    height,
+                    cameraModel
+                FROM photos
+                WHERE isJpeg = 1
+                ORDER BY relativePath
+            """)
+
+            for row in cursor.fetchall():
+                item = dict(row)
+                photoId = str(item["id"])
+                if photoId in excludedPhotoIds:
+                    continue
+
+                extension = str(item["extension"] or "").lower().strip()
+                if extension not in {".jpg", ".jpeg"}:
+                    continue
+
+                width = item.get("width")
+                height = item.get("height")
+                if width is None or height is None:
+                    continue
+
+                relativePath = str(item["relativePath"])
+                stem = Path(relativePath).stem
+                normalizedStem = self._normalizeDuplicateStem(stem)
+                if not normalizedStem:
+                    continue
+
+                cameraModel = str(item.get("cameraModel") or "").replace("\x00", "").strip().lower()
+                mtimeSecond = int(float(item["mtime"]))
+                key = (
+                    f"{normalizedStem}|{cameraModel}|"
+                    f"{int(width)}x{int(height)}|{mtimeSecond}"
+                )
+
+                existingList = groupedItems.get(key)
+                if existingList is None:
+                    groupedItems[key] = [item]
+                else:
+                    existingList.append(item)
+        finally:
+            connection.close()
+
+        for groupItems in groupedItems.values():
+            if len(groupItems) < 2:
+                continue
+
+            uniqueSizes = {int(item["size"]) for item in groupItems}
+            if len(uniqueSizes) < 2:
+                continue
+
+            sortedGroup = sorted(
+                groupItems,
+                key=lambda in_item: str(in_item["relativePath"]).lower(),
+            )
+            ret.append(sortedGroup)
+
+        ret.sort(
+            key=lambda in_group: int(in_group[0]["size"]),
+            reverse=True,
+        )
+
+        return ret
+
+    def getAllDuplicateCandidatePhotoIds(
+        self,
+    ) -> set[str]:
+        ret = self.getDuplicateCandidatePhotoIds()
+        similarGroups = self.getSimilarDuplicateGroups(ret)
+        for group in similarGroups:
+            for item in group:
+                ret.add(str(item["id"]))
+        return ret
+
+    def _normalizeDuplicateStem(
+        self,
+        in_stem: str,
+    ) -> str:
+        ret = in_stem.lower().strip()
+        ret = re.sub(r"\s*\(\d+\)$", "", ret)
+        ret = re.sub(r"\s+copy$", "", ret)
+        ret = re.sub(r"_copy$", "", ret)
+        ret = re.sub(r"-copy$", "", ret)
+        # Remove trailing copy index only when filename already
+        # has its own numeric sequence before the final separator.
+        # Example: IMG_0347_1 -> IMG_0347, but IMG_1531 stays IMG_1531.
+        ret = re.sub(r"(?<=\d)[_-](\d{1,3})$", "", ret)
         return ret

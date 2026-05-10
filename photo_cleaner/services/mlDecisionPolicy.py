@@ -35,11 +35,11 @@ def applyMlDecisionPolicy(
             suggestedRotation = None
             suggestedAction = "keep"
         elif topLabel == 90:
-            suggestedRotation = 90
-            suggestedAction = "rotate90"
-        elif topLabel == 270:
             suggestedRotation = 270
             suggestedAction = "rotate270"
+        elif topLabel == 270:
+            suggestedRotation = 90
+            suggestedAction = "rotate90"
         else:
             suggestedRotation = None
             suggestedAction = "manual_review"

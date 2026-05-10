@@ -311,15 +311,13 @@ IMG_0606 (1).jpg
 
 # 4. Face-Based Orientation Detection
 
-Implemented experimental command:
+Экспериментальная команда face-based отчета удалена из CLI.
+
+Актуальный путь для оценки ориентации — ML-отчет:
 
 ```bash
-python -m photo_cleaner build-face-orientation-report
+python -m photo_cleaner build-orientation-ml-report
 ```
-
-Purpose:
-
-Detect photos likely rotated incorrectly.
 
 ---
 

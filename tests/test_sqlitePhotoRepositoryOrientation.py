@@ -192,3 +192,250 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
 
             ids = {item["id"] for item in candidates}
             self.assertEqual(ids, {"included"})
+
+    def test_getOrientationCandidatesForFaceDetection_excludesDuplicateIds(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                    "exifOrientation": None,
+                    "cameraModel": "NIKON D800",
+                }
+
+                excludedRow = dict(baseRow)
+                excludedRow["id"] = "excluded-dup"
+                excludedRow["relativePath"] = "excluded.jpg"
+                insertPhoto(connection, excludedRow)
+
+                includedRow = dict(baseRow)
+                includedRow["id"] = "included-ori"
+                includedRow["relativePath"] = "included.jpg"
+                insertPhoto(connection, includedRow)
+            finally:
+                connection.close()
+
+            candidates = repository.getOrientationCandidatesForFaceDetection(
+                [".jpg"],
+                [],
+                [],
+                {"excluded-dup"},
+            )
+
+            ids = {item["id"] for item in candidates}
+            self.assertEqual(ids, {"included-ori"})
+
+    def test_getDuplicateCandidatePhotoIds_returnsOnlyExactDuplicates(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": nowValue,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                    "exifOrientation": None,
+                    "cameraModel": "NIKON D800",
+                }
+
+                row1 = dict(baseRow)
+                row1["id"] = "dup-1"
+                row1["relativePath"] = "dup-1.jpg"
+                row1["sha256"] = "hash-a"
+                insertPhoto(connection, row1)
+
+                row2 = dict(baseRow)
+                row2["id"] = "dup-2"
+                row2["relativePath"] = "dup-2.jpg"
+                row2["sha256"] = "hash-a"
+                insertPhoto(connection, row2)
+
+                row3 = dict(baseRow)
+                row3["id"] = "solo"
+                row3["relativePath"] = "solo.jpg"
+                row3["sha256"] = "hash-b"
+                insertPhoto(connection, row3)
+            finally:
+                connection.close()
+
+            duplicateIds = repository.getDuplicateCandidatePhotoIds()
+            self.assertEqual(duplicateIds, {"dup-1", "dup-2"})
+
+    def test_getSimilarDuplicateGroups_detectsCopyWithDifferentSize(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1000.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 2304,
+                    "height": 1728,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                    "exifOrientation": None,
+                    "cameraModel": "PENTAX Optio S4i ",
+                }
+
+                row1 = dict(baseRow)
+                row1["id"] = "sim-1"
+                row1["relativePath"] = "a/IMGP0427.JPG"
+                row1["size"] = 2868321
+                insertPhoto(connection, row1)
+
+                row2 = dict(baseRow)
+                row2["id"] = "sim-2"
+                row2["relativePath"] = "b/IMGP0427 (1).JPG"
+                row2["size"] = 2570240
+                insertPhoto(connection, row2)
+            finally:
+                connection.close()
+
+            similarGroups = repository.getSimilarDuplicateGroups(set())
+            self.assertEqual(len(similarGroups), 1)
+            ids = {item["id"] for item in similarGroups[0]}
+            self.assertEqual(ids, {"sim-1", "sim-2"})
+
+    def test_getAllDuplicateCandidatePhotoIds_unionsExactAndSimilar(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 2000.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "mtime": nowValue,
+                    "partialSha256": None,
+                    "width": 2304,
+                    "height": 1728,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                    "exifOrientation": None,
+                    "cameraModel": "PENTAX Optio S4i ",
+                }
+
+                exact1 = dict(baseRow)
+                exact1["id"] = "exact-1"
+                exact1["relativePath"] = "x/exact1.jpg"
+                exact1["size"] = 100
+                exact1["sha256"] = "same"
+                insertPhoto(connection, exact1)
+
+                exact2 = dict(baseRow)
+                exact2["id"] = "exact-2"
+                exact2["relativePath"] = "x/exact2.jpg"
+                exact2["size"] = 100
+                exact2["sha256"] = "same"
+                insertPhoto(connection, exact2)
+
+                sim1 = dict(baseRow)
+                sim1["id"] = "sim-1"
+                sim1["relativePath"] = "x/IMG_1000.JPG"
+                sim1["size"] = 300
+                sim1["sha256"] = None
+                insertPhoto(connection, sim1)
+
+                sim2 = dict(baseRow)
+                sim2["id"] = "sim-2"
+                sim2["relativePath"] = "x/IMG_1000 (1).JPG"
+                sim2["size"] = 280
+                sim2["sha256"] = None
+                insertPhoto(connection, sim2)
+            finally:
+                connection.close()
+
+            duplicateIds = repository.getAllDuplicateCandidatePhotoIds()
+            self.assertEqual(
+                duplicateIds,
+                {"exact-1", "exact-2", "sim-1", "sim-2"},
+            )
+
+    def test_getSimilarDuplicateGroups_doesNotMergeSequentialFrameNames(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 3000.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 2304,
+                    "height": 1728,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                    "exifOrientation": None,
+                    "cameraModel": "Canon EOS 450D",
+                }
+
+                frame1 = dict(baseRow)
+                frame1["id"] = "f1"
+                frame1["relativePath"] = "x/IMG_1441.JPG"
+                frame1["size"] = 3767447
+                insertPhoto(connection, frame1)
+
+                frame2 = dict(baseRow)
+                frame2["id"] = "f2"
+                frame2["relativePath"] = "x/IMG_1442.JPG"
+                frame2["size"] = 3949680
+                insertPhoto(connection, frame2)
+            finally:
+                connection.close()
+
+            similarGroups = repository.getSimilarDuplicateGroups(set())
+            self.assertEqual(similarGroups, [])
