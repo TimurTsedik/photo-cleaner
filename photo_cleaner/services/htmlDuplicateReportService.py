@@ -2,6 +2,9 @@ import html
 from pathlib import Path
 from typing import Any
 
+from photo_cleaner.infrastructure.fileSystemScanner import (
+    pathMatchesExcludedPrefix,
+)
 from photo_cleaner.infrastructure.sqlitePhotoRepository import (
     SqlitePhotoRepository,
 )
@@ -221,15 +224,29 @@ class HtmlOrientationReportService:
         in_workspacePath: str,
         in_maxSide: int,
         in_quality: int,
-        in_trustedCameraModels: list[str],
         in_candidateExtensions: list[str],
         in_neverRotateExtensions: list[str],
+        in_excludedPathPrefixes: list[str],
     ) -> None:
         candidates = self._repository.getOrientationCandidates(
-            in_trustedCameraModels,
             in_candidateExtensions,
             in_neverRotateExtensions,
         )
+
+        archiveRootPath = Path(in_archiveRoot)
+
+        filteredCandidates: list[dict[str, Any]] = []
+        for item in candidates:
+            absoluteItemPath = archiveRootPath / str(item["relativePath"])
+            if pathMatchesExcludedPrefix(
+                absoluteItemPath,
+                archiveRootPath,
+                in_excludedPathPrefixes,
+            ):
+                continue
+            filteredCandidates.append(item)
+
+        candidates = filteredCandidates
 
         workspacePath = Path(in_workspacePath)
         thumbsPath = workspacePath / "thumbs" / "orientation"
@@ -272,10 +289,11 @@ img { max-width: 256px; max-height: 256px; display: block; margin-bottom: 8px; b
             cameraModel = item["cameraModel"] or "unknown"
             exifOrientation = item["exifOrientation"] or "unknown"
 
+            suggestedRotation = int(item["suggestedRotation"])
+
             variants = [
                 ("ORIGINAL", 0),
-                ("ROTATE 90", 90),
-                ("ROTATE 270", 270),
+                (f"SUGGESTED ROTATE {suggestedRotation}", suggestedRotation),
             ]
 
             htmlParts.append('<div class="item">')

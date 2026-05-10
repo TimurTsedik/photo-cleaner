@@ -1,8 +1,8 @@
 archive:
-  root: '/Volumes/My Passport/ARCHIVE/Photos'
+  root: '/Volumes/My Passport/ARCHIVE/Photos/photo base/2005/05/'
 
 workspace:
-  path: "./workspace"
+  path: "./workspace_test"
 
 files:
   jpegExtensions:
@@ -24,10 +24,6 @@ files:
     - ".mov"
     - ".mp4"
 
-  hashOnlyExtensions:
-    - ".mov"
-    - ".mp4"
-
 duplicates:
   trashDir: ".photo-cleaner-trash/duplicates"
 
@@ -36,12 +32,6 @@ orientation:
 
   trustedCameraModels:
     - "Canon EOS 5D Mark II"
-    - "Canon EOS 450D"
-    - "NIKON D90"
-    - "NIKON D800"
-
-  excludedPathPrefixes:
-    - '/Volumes/My Passport/ARCHIVE/Photos/astro/'
 
   neverRotateExtensions:
     - ".cr2"
@@ -66,36 +56,34 @@ orientation:
     - 270
 
   openrouter:
-    model: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+    model: "baidu/qianfan-ocr-fast:free"
     endpoint: "https://openrouter.ai/api/v1/chat/completions"
     apiKey: "YOUR_OPENROUTER_API_KEY"
     timeoutSeconds: 120
     maxRateLimitWaitSeconds: 15
     maxRateLimitRetries: 1
-    debugDumpEnabled: false
-    debugDumpDir: "./workspace/debug"
+    debugDumpEnabled: true
+    debugDumpDir: "./workspace_test/debug"
     minConfidence: 0.85
     maxImageSide: 448
     comparePanelSide: 128
     jpegQuality: 65
 
   ml:
-    datasetCameraModel: "Canon EOS 450D"
-    datasetRoot: "./workspace/orientation_dataset"
-    checkpointPath: "./workspace/models/orientation_efficientnet_b0.pt"
-    metricsPath: "./workspace/models/orientation_metrics.json"
+    datasetCameraModel: "Canon EOS 5D Mark II"
+    datasetRoot: "./workspace_test/orientation_dataset"
+    checkpointPath: "./workspace_test/models/orientation_efficientnet_b0.pt"
+    metricsPath: "./workspace_test/models/orientation_metrics.json"
     randomSeed: 42
     trainRatio: 0.7
     valRatio: 0.15
     imageSize: 224
     jpegQuality: 92
-    batchSize: 16
-    epochs: 15
+    batchSize: 8
+    epochs: 1
     learningRate: 0.0001
-    device: "mps"
+    device: "cpu"
     numWorkers: 0
-    verbose: true
-    logEveryBatches: 5
     confidenceThreshold: 0.95
     marginThreshold: 0.25
 

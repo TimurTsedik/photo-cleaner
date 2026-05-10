@@ -20,11 +20,13 @@ class ScanService:
         in_archiveRoot: str,
         in_jpegExtensions: set[str],
         in_rawExtensions: set[str],
+        in_excludedPathPrefixes: list[str],
     ) -> None:
         photos = self._scanner.scan(
             in_archiveRoot,
             in_jpegExtensions,
             in_rawExtensions,
+            in_excludedPathPrefixes,
         )
 
         for photo in photos:

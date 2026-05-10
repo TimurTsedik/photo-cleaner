@@ -205,16 +205,10 @@ class SqlitePhotoRepository:
         return ret
     def getOrientationCandidates(
         self,
-        in_trustedCameraModels: list[str],
         in_candidateExtensions: list[str],
         in_neverRotateExtensions: list[str],
     ) -> list[dict[str, Any]]:
         ret: list[dict[str, Any]] = []
-
-        trustedCameraModels = {
-            cameraModel.strip()
-            for cameraModel in in_trustedCameraModels
-        }
 
         candidateExtensions = {
             extension.lower().strip()
@@ -245,14 +239,13 @@ class SqlitePhotoRepository:
                     exifOrientation
                 FROM photos
                 WHERE isJpeg = 1
+                AND exifOrientation IN (6, 8)
                 ORDER BY relativePath
             """)
 
             for row in cursor.fetchall():
                 item = dict(row)
-
                 extension = str(item["extension"]).lower().strip()
-                cameraModel = item["cameraModel"]
 
                 if extension in neverRotateExtensions:
                     continue
@@ -260,13 +253,131 @@ class SqlitePhotoRepository:
                 if extension not in candidateExtensions:
                     continue
 
-                if cameraModel is not None:
-                    normalizedCameraModel = str(cameraModel).strip()
+                item["suggestedRotation"] = 90 if item["exifOrientation"] == 6 else 270
 
-                    if normalizedCameraModel in trustedCameraModels:
-                        continue
+                ret.append(item)
 
-                    item["cameraModel"] = normalizedCameraModel
+        finally:
+            connection.close()
+
+        return ret
+
+    def getTrustedUprightPhotosForOrientationDataset(
+        self,
+        in_candidateExtensions: list[str],
+        in_neverRotateExtensions: list[str],
+        in_cameraModel: str,
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        candidateExtensions = {
+            extension.lower().strip()
+            for extension in in_candidateExtensions
+        }
+
+        neverRotateExtensions = {
+            extension.lower().strip()
+            for extension in in_neverRotateExtensions
+        }
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    relativePath,
+                    extension,
+                    cameraModel,
+                    exifOrientation
+                FROM photos
+                WHERE isJpeg = 1
+                AND cameraModel = ?
+                AND exifOrientation = 1
+                ORDER BY relativePath
+            """, (in_cameraModel,))
+
+            for row in cursor.fetchall():
+                item = dict(row)
+                extension = str(item["extension"]).lower().strip()
+
+                if extension in neverRotateExtensions:
+                    continue
+
+                if extension not in candidateExtensions:
+                    continue
+
+                ret.append(item)
+
+        finally:
+            connection.close()
+
+        return ret
+
+    def getOrientationCandidatesForFaceDetection(
+        self,
+        in_candidateExtensions: list[str],
+        in_neverRotateExtensions: list[str],
+        in_trustedCameraModels: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        candidateExtensions = {
+            extension.lower().strip()
+            for extension in in_candidateExtensions
+        }
+
+        neverRotateExtensions = {
+            extension.lower().strip()
+            for extension in in_neverRotateExtensions
+        }
+
+        trustedCameraModelsNormalized: set[str] = set()
+        if in_trustedCameraModels is not None:
+            trustedCameraModelsNormalized = {
+                str(cameraModel).replace("\x00", "").strip().lower()
+                for cameraModel in in_trustedCameraModels
+                if str(cameraModel).strip()
+            }
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+
+            cursor.execute("""
+                SELECT
+                    id,
+                    relativePath,
+                    extension,
+                    size,
+                    cameraModel,
+                    exifOrientation
+                FROM photos
+                WHERE isJpeg = 1
+                AND exifOrientation IS NULL
+                ORDER BY relativePath
+            """)
+
+            for row in cursor.fetchall():
+                item = dict(row)
+                extension = str(item["extension"]).lower().strip()
+
+                if extension in neverRotateExtensions:
+                    continue
+
+                if extension not in candidateExtensions:
+                    continue
+
+                cameraModelNormalized = str(
+                    item.get("cameraModel") or ""
+                ).replace("\x00", "").strip().lower()
+                if cameraModelNormalized in trustedCameraModelsNormalized:
+                    continue
 
                 ret.append(item)
 
