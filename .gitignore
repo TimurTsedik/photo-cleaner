@@ -71,6 +71,10 @@ ipython_config.py
 *.sqlite
 *.sqlite3
 workspace/
+!workspace/
+workspace/*
+!workspace/models/
+!workspace/models/**
 workspace_test/
 
 # IDE / editors
