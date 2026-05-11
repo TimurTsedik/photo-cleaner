@@ -26,6 +26,7 @@ from photo_cleaner.services.duplicateReportService import (
     DuplicateReportService,
 )
 from photo_cleaner.services.orientationReportService import OrientationReportService
+from photo_cleaner.services.applyActionsService import ApplyActionsService
 from photo_cleaner.services.scanService import (
     ScanService,
 )
@@ -296,3 +297,59 @@ class PhotoCleanerOperations:
             f"bestValAccuracy={trainResult['bestValAccuracy']:.4f} "
             f"device={trainResult['device']}"
         )
+
+    def runApply(
+        self,
+        in_dryRun: bool,
+    ) -> dict:
+        config = self._loadConfig()
+        repository = self._buildRepository(config)
+        applyService = ApplyActionsService(repository)
+
+        duplicateBlock = config.get("duplicates", {})
+        trashDir = str(
+            duplicateBlock.get("trashDir", ".photo-cleaner-trash/duplicates")
+        )
+
+        ret = applyService.apply(
+            config["archive"]["root"],
+            config["workspace"]["path"],
+            trashDir,
+            in_dryRun,
+        )
+        print(
+            "apply finished: "
+            f"dryRun={ret['dryRun']} "
+            f"duplicatePlanned={ret['duplicatePlanned']} "
+            f"duplicateApplied={ret['duplicateApplied']} "
+            f"duplicateSkipped={ret['duplicateSkipped']} "
+            f"orientationPlanned={ret['orientationPlanned']} "
+            f"orientationApplied={ret['orientationApplied']} "
+            f"orientationSkipped={ret['orientationSkipped']} "
+            f"errors={len(ret['errors'])}"
+        )
+        return ret
+
+    def runUndoLastApply(
+        self,
+        in_dryRun: bool,
+    ) -> dict:
+        config = self._loadConfig()
+        repository = self._buildRepository(config)
+        applyService = ApplyActionsService(repository)
+
+        ret = applyService.undoLastApply(
+            config["archive"]["root"],
+            config["workspace"]["path"],
+            in_dryRun,
+        )
+        print(
+            "undo-last-apply finished: "
+            f"dryRun={ret['dryRun']} "
+            f"targetRunId={ret['targetRunId']} "
+            f"planned={ret['planned']} "
+            f"applied={ret['applied']} "
+            f"skipped={ret['skipped']} "
+            f"errors={len(ret['errors'])}"
+        )
+        return ret

@@ -8,7 +8,7 @@
 </head>
 <body>
   <h1>Photo Cleaner</h1>
-  <div class="subtitle">Панель управления пайплайном: скан, дубликаты, кандидаты на разворот.</div>
+  <div class="subtitle">Панель управления пайплайном: скан, дубликаты, кандидаты на неверную ориентацию фото.</div>
 
   <div class="card">
     <div class="sectionTitle">KPI и статус</div>
@@ -124,7 +124,7 @@
     <div class="buttons">
       <button onclick="runCommand('scan')">Скан</button>
       <button onclick="runCommand('duplicates')">Собрать дубликаты</button>
-      <button onclick="runCommand('orientation')">Найти кандидатов на разворот</button>
+      <button onclick="runCommand('orientation')">Найти кандидатов на неверную ориентацию фото</button>
       <button class="secondary" onclick="openReport('/reports/duplicates')">Открыть отчет дубликатов</button>
       <button class="secondary" onclick="openReport('/reports/orientation')">Открыть отчет ориентации</button>
     </div>

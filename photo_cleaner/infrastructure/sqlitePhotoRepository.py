@@ -846,6 +846,43 @@ class SqlitePhotoRepository:
         }
         return ret
 
+    def getPhotoPathsByIds(
+        self,
+        in_photoIds: list[str],
+    ) -> dict[str, str]:
+        ret: dict[str, str] = {}
+
+        photoIds = [
+            str(photoId).strip()
+            for photoId in in_photoIds
+            if str(photoId).strip()
+        ]
+        if not photoIds:
+            return ret
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+        try:
+            cursor = connection.cursor()
+            placeholders = ", ".join("?" for _ in photoIds)
+            cursor.execute(
+                f"""
+                SELECT id, relativePath
+                FROM photos
+                WHERE id IN ({placeholders})
+                """,
+                tuple(photoIds),
+            )
+
+            for row in cursor.fetchall():
+                photoId = str(row["id"])
+                relativePath = str(row["relativePath"])
+                ret[photoId] = relativePath
+        finally:
+            connection.close()
+
+        return ret
+
     def _normalizeDuplicateStem(
         self,
         in_stem: str,
