@@ -1,5 +1,7 @@
 import sqlite3
 import re
+import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +44,22 @@ class SqlitePhotoRepository:
                     thumbnailPath TEXT,
 
                     createdAt REAL NOT NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS orientationActions (
+                    photoId TEXT PRIMARY KEY,
+                    payloadJson TEXT NOT NULL,
+                    updatedAt REAL NOT NULL
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS duplicateActions (
+                    groupKey TEXT PRIMARY KEY,
+                    payloadJson TEXT NOT NULL,
+                    updatedAt REAL NOT NULL
                 )
             """)
 
@@ -319,6 +337,89 @@ class SqlitePhotoRepository:
 
         return ret
 
+    def getConfirmedOrientationPhotosForOrientationDataset(
+        self,
+        in_candidateExtensions: list[str],
+        in_neverRotateExtensions: list[str],
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        candidateExtensions = {
+            extension.lower().strip()
+            for extension in in_candidateExtensions
+        }
+
+        neverRotateExtensions = {
+            extension.lower().strip()
+            for extension in in_neverRotateExtensions
+        }
+
+        orientationActions = self.getOrientationActions()
+        confirmedRotationsByPhotoId: dict[str, int] = {}
+
+        for photoId, actionPayload in orientationActions.items():
+            statusValue = str(actionPayload.get("status", "")).strip().lower()
+            if statusValue != "confirmed":
+                continue
+
+            selectedRotation = actionPayload.get("selectedRotation")
+            if selectedRotation is None:
+                continue
+
+            try:
+                rotationValue = int(selectedRotation)
+            except (TypeError, ValueError):
+                continue
+
+            if rotationValue not in {90, 270}:
+                continue
+
+            confirmedRotationsByPhotoId[str(photoId)] = rotationValue
+
+        photoIds = list(confirmedRotationsByPhotoId.keys())
+        if not photoIds:
+            return ret
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+            placeholders = ", ".join("?" for _ in photoIds)
+            cursor.execute(
+                f"""
+                SELECT
+                    id,
+                    relativePath,
+                    extension,
+                    cameraModel,
+                    exifOrientation
+                FROM photos
+                WHERE isJpeg = 1
+                AND id IN ({placeholders})
+                ORDER BY relativePath
+                """,
+                tuple(photoIds),
+            )
+
+            for row in cursor.fetchall():
+                item = dict(row)
+                itemId = str(item["id"])
+                extension = str(item["extension"]).lower().strip()
+
+                if extension in neverRotateExtensions:
+                    continue
+
+                if extension not in candidateExtensions:
+                    continue
+
+                item["baseRotation"] = confirmedRotationsByPhotoId[itemId]
+                ret.append(item)
+        finally:
+            connection.close()
+
+        return ret
+
     def getOrientationCandidatesForFaceDetection(
         self,
         in_candidateExtensions: list[str],
@@ -518,6 +619,231 @@ class SqlitePhotoRepository:
         for group in similarGroups:
             for item in group:
                 ret.add(str(item["id"]))
+        return ret
+
+    def getTotalPhotosCount(
+        self,
+    ) -> int:
+        ret = 0
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) AS countValue
+                FROM photos
+            """)
+            row = cursor.fetchone()
+            if row is not None:
+                ret = int(row["countValue"])
+        finally:
+            connection.close()
+
+        return ret
+
+    def getExtensionCounts(
+        self,
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT extension, COUNT(*) AS countValue
+                FROM photos
+                GROUP BY extension
+            """)
+
+            groupedItems = cursor.fetchall()
+            aggregateByExtension: dict[str, int] = {}
+            for row in groupedItems:
+                extensionRaw = str(row["extension"] or "").lower().strip()
+                extension = extensionRaw if extensionRaw else "(unknown)"
+                previousCount = aggregateByExtension.get(extension, 0)
+                aggregateByExtension[extension] = previousCount + int(row["countValue"])
+
+            sortedItems = sorted(
+                aggregateByExtension.items(),
+                key=lambda in_item: (-in_item[1], in_item[0]),
+            )
+            for extensionValue, countValue in sortedItems:
+                ret.append(
+                    {
+                        "extension": extensionValue,
+                        "count": countValue,
+                    }
+                )
+        finally:
+            connection.close()
+
+        return ret
+
+    def getCameraModelCounts(
+        self,
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT cameraModel, COUNT(*) AS countValue
+                FROM photos
+                GROUP BY cameraModel
+            """)
+
+            groupedItems = cursor.fetchall()
+            aggregateByModel: dict[str, int] = {}
+            for row in groupedItems:
+                cameraModelRaw = str(row["cameraModel"] or "").replace("\x00", "").strip()
+                cameraModel = cameraModelRaw if cameraModelRaw else "(unknown)"
+                previousCount = aggregateByModel.get(cameraModel, 0)
+                aggregateByModel[cameraModel] = previousCount + int(row["countValue"])
+
+            sortedItems = sorted(
+                aggregateByModel.items(),
+                key=lambda in_item: (-in_item[1], in_item[0].lower()),
+            )
+            for cameraModelValue, countValue in sortedItems:
+                ret.append(
+                    {
+                        "cameraModel": cameraModelValue,
+                        "count": countValue,
+                    }
+                )
+        finally:
+            connection.close()
+
+        return ret
+
+    def getOrientationActions(
+        self,
+    ) -> dict[str, dict[str, Any]]:
+        ret: dict[str, dict[str, Any]] = {}
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT photoId, payloadJson
+                FROM orientationActions
+            """)
+            for row in cursor.fetchall():
+                photoId = str(row["photoId"])
+                payloadRaw = str(row["payloadJson"])
+                try:
+                    payload = json.loads(payloadRaw)
+                except Exception:
+                    payload = {}
+                if isinstance(payload, dict):
+                    ret[photoId] = payload
+        finally:
+            connection.close()
+
+        return ret
+
+    def getDuplicateActions(
+        self,
+    ) -> dict[str, dict[str, Any]]:
+        ret: dict[str, dict[str, Any]] = {}
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT groupKey, payloadJson
+                FROM duplicateActions
+            """)
+            for row in cursor.fetchall():
+                groupKey = str(row["groupKey"])
+                payloadRaw = str(row["payloadJson"])
+                try:
+                    payload = json.loads(payloadRaw)
+                except Exception:
+                    payload = {}
+                if isinstance(payload, dict):
+                    ret[groupKey] = payload
+        finally:
+            connection.close()
+
+        return ret
+
+    def upsertOrientationAction(
+        self,
+        in_photoId: str,
+        in_payload: dict[str, Any],
+    ) -> None:
+        connection = sqlite3.connect(self._dbPath)
+        try:
+            cursor = connection.cursor()
+            payloadJson = json.dumps(in_payload, ensure_ascii=False)
+            cursor.execute("""
+                INSERT INTO orientationActions (
+                    photoId,
+                    payloadJson,
+                    updatedAt
+                ) VALUES (?, ?, ?)
+                ON CONFLICT(photoId) DO UPDATE SET
+                    payloadJson = excluded.payloadJson,
+                    updatedAt = excluded.updatedAt
+            """, (
+                in_photoId,
+                payloadJson,
+                float(time.time()),
+            ))
+            connection.commit()
+        finally:
+            connection.close()
+
+    def upsertDuplicateAction(
+        self,
+        in_groupKey: str,
+        in_payload: dict[str, Any],
+    ) -> None:
+        connection = sqlite3.connect(self._dbPath)
+        try:
+            cursor = connection.cursor()
+            payloadJson = json.dumps(in_payload, ensure_ascii=False)
+            cursor.execute("""
+                INSERT INTO duplicateActions (
+                    groupKey,
+                    payloadJson,
+                    updatedAt
+                ) VALUES (?, ?, ?)
+                ON CONFLICT(groupKey) DO UPDATE SET
+                    payloadJson = excluded.payloadJson,
+                    updatedAt = excluded.updatedAt
+            """, (
+                in_groupKey,
+                payloadJson,
+                float(time.time()),
+            ))
+            connection.commit()
+        finally:
+            connection.close()
+
+    def buildActionsPayloadFromDb(
+        self,
+    ) -> dict[str, Any]:
+        ret = {
+            "version": 1,
+            "updatedAt": None,
+            "duplicates": {
+                "groups": self.getDuplicateActions(),
+            },
+            "orientation": {
+                "items": self.getOrientationActions(),
+            },
+        }
         return ret
 
     def _normalizeDuplicateStem(

@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+import time
 from pathlib import Path
 
 from photo_cleaner.infrastructure.sqlitePhotoRepository import (
@@ -43,6 +44,158 @@ def insertPhoto(
 
 
 class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
+    def test_getExtensionCounts_groupsAndNormalizes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1.0
+                baseRow = {
+                    "size": 10,
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "cameraModel": "X",
+                    "exifOrientation": None,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                }
+
+                row1 = dict(baseRow)
+                row1["id"] = "p1"
+                row1["relativePath"] = "a.JPG"
+                row1["extension"] = ".JPG"
+                insertPhoto(connection, row1)
+
+                row2 = dict(baseRow)
+                row2["id"] = "p2"
+                row2["relativePath"] = "b.jpg"
+                row2["extension"] = ".jpg"
+                insertPhoto(connection, row2)
+
+                row3 = dict(baseRow)
+                row3["id"] = "p3"
+                row3["relativePath"] = "c.CR2"
+                row3["extension"] = ".CR2"
+                insertPhoto(connection, row3)
+            finally:
+                connection.close()
+
+            extensionCounts = repository.getExtensionCounts()
+            self.assertEqual(
+                extensionCounts,
+                [
+                    {"extension": ".jpg", "count": 2},
+                    {"extension": ".cr2", "count": 1},
+                ],
+            )
+
+    def test_getCameraModelCounts_groupsAndNormalizes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "exifOrientation": None,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                }
+
+                row1 = dict(baseRow)
+                row1["id"] = "p1"
+                row1["relativePath"] = "a.jpg"
+                row1["cameraModel"] = "Canon EOS 450D"
+                insertPhoto(connection, row1)
+
+                row2 = dict(baseRow)
+                row2["id"] = "p2"
+                row2["relativePath"] = "b.jpg"
+                row2["cameraModel"] = " Canon EOS 450D\x00 "
+                insertPhoto(connection, row2)
+
+                row3 = dict(baseRow)
+                row3["id"] = "p3"
+                row3["relativePath"] = "c.jpg"
+                row3["cameraModel"] = None
+                insertPhoto(connection, row3)
+            finally:
+                connection.close()
+
+            cameraCounts = repository.getCameraModelCounts()
+            self.assertEqual(
+                cameraCounts,
+                [
+                    {"cameraModel": "Canon EOS 450D", "count": 2},
+                    {"cameraModel": "(unknown)", "count": 1},
+                ],
+            )
+
+    def test_getTotalPhotosCount_returnsNumberOfRows(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "cameraModel": "X",
+                    "exifOrientation": None,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                }
+
+                row1 = dict(baseRow)
+                row1["id"] = "p1"
+                row1["relativePath"] = "a.jpg"
+                insertPhoto(connection, row1)
+
+                row2 = dict(baseRow)
+                row2["id"] = "p2"
+                row2["relativePath"] = "b.jpg"
+                insertPhoto(connection, row2)
+            finally:
+                connection.close()
+
+            totalCount = repository.getTotalPhotosCount()
+            self.assertEqual(totalCount, 2)
+
     def test_getOrientationCandidatesForFaceDetection_onlyNullExif(
         self,
     ) -> None:
@@ -143,6 +296,87 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
 
             ids = {item["id"] for item in photosList}
             self.assertEqual(ids, {"c1"})
+
+    def test_getConfirmedOrientationPhotosForOrientationDataset_returnsConfirmedRotations(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 1.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                    "cameraModel": "NIKON D800",
+                    "exifOrientation": None,
+                }
+
+                rowConfirmed = dict(baseRow)
+                rowConfirmed["id"] = "confirmed-90"
+                rowConfirmed["relativePath"] = "confirmed.jpg"
+                insertPhoto(connection, rowConfirmed)
+
+                rowPending = dict(baseRow)
+                rowPending["id"] = "pending-270"
+                rowPending["relativePath"] = "pending.jpg"
+                insertPhoto(connection, rowPending)
+
+                rowNoRotation = dict(baseRow)
+                rowNoRotation["id"] = "confirmed-none"
+                rowNoRotation["relativePath"] = "none.jpg"
+                insertPhoto(connection, rowNoRotation)
+            finally:
+                connection.close()
+
+            repository.upsertOrientationAction(
+                "confirmed-90",
+                {
+                    "photoId": "confirmed-90",
+                    "selectedRotation": 90,
+                    "status": "confirmed",
+                    "updatedAt": time.time(),
+                },
+            )
+            repository.upsertOrientationAction(
+                "pending-270",
+                {
+                    "photoId": "pending-270",
+                    "selectedRotation": 270,
+                    "status": "pending",
+                    "updatedAt": time.time(),
+                },
+            )
+            repository.upsertOrientationAction(
+                "confirmed-none",
+                {
+                    "photoId": "confirmed-none",
+                    "selectedRotation": None,
+                    "status": "confirmed",
+                    "updatedAt": time.time(),
+                },
+            )
+
+            photosList = repository.getConfirmedOrientationPhotosForOrientationDataset(
+                [".jpg"],
+                [],
+            )
+
+            self.assertEqual(len(photosList), 1)
+            self.assertEqual(photosList[0]["id"], "confirmed-90")
+            self.assertEqual(photosList[0]["baseRotation"], 90)
 
     def test_getOrientationCandidatesForFaceDetection_excludesCameraModels(
         self,

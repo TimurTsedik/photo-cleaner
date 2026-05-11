@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Cleaner Control</title>
+  <link rel="stylesheet" href="/assets/controlPanel.css">
+</head>
+<body>
+  <h1>Photo Cleaner</h1>
+  <div class="subtitle">Панель управления пайплайном: скан, дубликаты, кандидаты на разворот.</div>
+
+  <div class="card">
+    <div class="sectionTitle">KPI и статус</div>
+    <div class="buttons">
+      <button onclick="loadSummary()">Обновить сводку</button>
+    </div>
+    <div class="kpiGrid">
+      <div class="kpi">
+        <div class="kpiLabel">Всего файлов в БД</div>
+        <div class="kpiValue" id="kpiTotalFiles">0</div>
+        <span class="badge ok">DB online</span>
+      </div>
+      <div class="kpi">
+        <div class="kpiLabel">Ориентация: обработано</div>
+        <div class="kpiValue" id="kpiOrientationResolved">0%</div>
+        <div class="progress"><div id="orientationProgressFill" class="progressFill" style="width:0%"></div></div>
+        <span id="orientationBadge" class="badge warn">-</span>
+      </div>
+      <div class="kpi">
+        <div class="kpiLabel">Дубликаты: подтверждено</div>
+        <div class="kpiValue" id="kpiDuplicateConfirmed">0%</div>
+        <div class="progress"><div id="duplicateProgressFill" class="progressFill" style="width:0%"></div></div>
+        <span id="duplicateBadge" class="badge warn">-</span>
+      </div>
+      <div class="kpi">
+        <div class="kpiLabel">Доля manual review</div>
+        <div class="kpiValue" id="kpiManualReview">0%</div>
+        <span id="manualBadge" class="badge warn">-</span>
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <div class="metaLine"><b>Папка библиотеки фото:</b> <span id="archiveRoot">-</span></div>
+        <div class="metaLine"><b>Папка workspace:</b> <span id="workspacePath">-</span></div>
+        <div class="metaLine"><b>БД cleanup.db:</b> <span id="dbStats">-</span></div>
+        <div class="metaLine"><b>Камеры trusted / not trusted:</b> <span id="cameraSplitStats">-</span></div>
+      </div>
+      <div>
+        <div class="metaLine"><b>Следующие шаги:</b></div>
+        <ul id="nextActions" class="list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sectionTitle">Сводка данных</div>
+    <div class="row">
+      <div>
+        <div class="metaLine"><b>Исключаемые папки:</b></div>
+        <ul id="excludedPathPrefixes" class="list"></ul>
+        <div class="metaLine"><b>Камеры из config (trusted):</b></div>
+        <ul id="trustedCameraModels" class="list"></ul>
+      </div>
+      <div>
+        <div class="metaLine"><b>Камеры, реально найденные в архиве:</b></div>
+        <ul id="usedCameraModels" class="list"></ul>
+      </div>
+      <div>
+        <div class="metaLine"><b>Количество файлов по типам:</b></div>
+        <ul id="extensionCounts" class="list"></ul>
+      </div>
+    </div>
+    <div class="summaryGrid">
+      <div class="summaryCard">
+        <div class="summaryTitle">Дубликаты</div>
+        <div class="summaryLine">Exact groups: <span id="dupExactGroupsCount">0</span></div>
+        <div class="summaryLine">Exact files: <span id="dupExactFilesCount">0</span></div>
+        <div class="summaryLine">Similar groups: <span id="dupSimilarGroupsCount">0</span></div>
+        <div class="summaryLine">Similar files: <span id="dupSimilarFilesCount">0</span></div>
+      </div>
+      <div class="summaryCard">
+        <div class="summaryTitle">Решения по дубликатам</div>
+        <div class="summaryLine">Confirmed: <span id="dupConfirmedCount">0</span></div>
+        <div class="summaryLine">Pending: <span id="dupPendingCount">0</span></div>
+      </div>
+      <div class="summaryCard">
+        <div class="summaryTitle">Ориентация (ML)</div>
+        <div class="summaryLine">Candidates: <span id="oriCandidatesCount">0</span></div>
+        <div class="summaryLine">Suggested auto: <span id="oriAutoCount">0</span></div>
+        <div class="summaryLine">Suggested manual: <span id="oriManualCount">0</span></div>
+      </div>
+      <div class="summaryCard">
+        <div class="summaryTitle">Решения по ориентации</div>
+        <div class="summaryLine">Resolved: <span id="oriResolvedCount">0</span></div>
+        <div class="summaryLine">Pending: <span id="oriPendingCount">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card editableCard">
+    <div class="sectionTitle">Редактирование config.yaml</div>
+    <div class="editableHint">Поля ниже изменяемые. После редактирования нажми "Сохранить config.yaml".</div>
+    <div class="field">
+      <div class="metaLine">Папка библиотеки фото (`archive.root`)</div>
+      <input type="text" id="cfgArchiveRoot">
+    </div>
+    <div class="field">
+      <div class="metaLine">Trusted камеры (по одной в строке)</div>
+      <textarea id="cfgTrustedCameras" rows="5"></textarea>
+    </div>
+    <div class="field">
+      <div class="metaLine">Исключаемые папки (`orientation.excludedPathPrefixes`, по одной в строке)</div>
+      <textarea id="cfgExcludedPrefixes" rows="5"></textarea>
+    </div>
+    <div class="buttons">
+      <button onclick="saveConfig()">Сохранить config.yaml</button>
+      <button class="secondary" onclick="loadConfigEditor()">Перечитать config.yaml</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sectionTitle">Команды</div>
+    <div class="buttons">
+      <button onclick="runCommand('scan')">Скан</button>
+      <button onclick="runCommand('duplicates')">Собрать дубликаты</button>
+      <button onclick="runCommand('orientation')">Найти кандидатов на разворот</button>
+      <button class="secondary" onclick="openReport('/reports/duplicates')">Открыть отчет дубликатов</button>
+      <button class="secondary" onclick="openReport('/reports/orientation')">Открыть отчет ориентации</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="sectionTitle">Логи выполнения</div>
+    <pre id="logs">Готово к запуску.</pre>
+  </div>
+
+  <script src="/assets/controlPanel.js"></script>
+</body>
+</html>

@@ -42,7 +42,7 @@ class _FakeRawMetadataReader:
 
 
 class FileSystemScannerRawMetadataTests(TestCase):
-    def test_scan_usesRawMetadataReader_forRawFiles(self) -> None:
+    def test_scan_collectsMetadataForAllSupportedFiles(self) -> None:
         jpegReader = _FakeJpegMetadataReader()
         rawReader = _FakeRawMetadataReader()
         scanner = FileSystemScanner(
@@ -70,7 +70,11 @@ class FileSystemScannerRawMetadataTests(TestCase):
         }
 
         self.assertEqual(jpegReader.calls, 1)
-        self.assertEqual(rawReader.calls, 1)
+        self.assertEqual(rawReader.calls, 2)
+        self.assertEqual(
+            photosByExtension[".jpg"]["cameraModel"],
+            "Canon EOS 5D Mark II",
+        )
         self.assertEqual(
             photosByExtension[".cr2"]["cameraModel"],
             "Canon EOS 5D Mark II",

@@ -102,6 +102,14 @@ def buildOrientationDatasetFromArchive(
         partitionName = idToPartition[sourceId]
         relativePath = str(item["relativePath"])
         sourcePath = in_archiveRoot / relativePath
+        rawBaseRotation = item.get("baseRotation", 0)
+        baseRotation = 0
+        try:
+            baseRotation = int(rawBaseRotation)
+        except (TypeError, ValueError):
+            baseRotation = 0
+        if baseRotation not in {0, 90, 270}:
+            baseRotation = 0
 
         if not sourcePath.exists():
             errors.append(f"missing file: {relativePath}")
@@ -111,6 +119,14 @@ def buildOrientationDatasetFromArchive(
             with Image.open(sourcePath) as imageRaw:
                 baseImage = ImageOps.exif_transpose(imageRaw)
                 baseImage = baseImage.convert("RGB")
+                if baseRotation == 90:
+                    baseImage = baseImage.transpose(
+                        Image.Transpose.ROTATE_270,
+                    )
+                elif baseRotation == 270:
+                    baseImage = baseImage.transpose(
+                        Image.Transpose.ROTATE_90,
+                    )
 
                 variants: list[tuple[str, int]] = [
                     ("0", 0),

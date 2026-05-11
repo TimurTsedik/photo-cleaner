@@ -1,0 +1,133 @@
+body {
+  font-family: "Inter", "SF Pro Text", "Segoe UI", Arial, sans-serif;
+  background: linear-gradient(180deg, #0f1220 0%, #12172a 100%);
+  color: #ecf1ff;
+  margin: 24px;
+  line-height: 1.45;
+}
+
+h1 {
+  margin: 0 0 10px 0;
+  font-size: 30px;
+}
+
+h2 {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+}
+
+.subtitle {
+  color: #9ea9c5;
+  margin-bottom: 12px;
+}
+
+.toolbar {
+  margin: 12px 0 16px 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  background: #304463;
+  color: #eef3ff;
+  border: 1px solid #3f5a84;
+  border-radius: 8px;
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #38537a;
+}
+
+.meta {
+  color: #a8b2cd;
+  font-size: 13px;
+}
+
+.status {
+  color: #8fd7ff;
+  margin: 8px 0;
+}
+
+.card {
+  border: 1px solid #34415e;
+  border-radius: 12px;
+  margin-bottom: 18px;
+  padding: 14px;
+  background: #1a2132;
+}
+
+.items,
+.variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.items .item,
+.variants .variant {
+  width: 300px;
+  border: 1px solid #374667;
+  border-radius: 10px;
+  padding: 12px;
+  background: #202b42;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  background: #37425f;
+}
+
+.badgeKeep {
+  background: #1f7a58;
+}
+
+.badgeMove {
+  background: #963d4a;
+}
+
+.keep {
+  border-color: #2b9f72;
+}
+
+.move {
+  border-color: #c25466;
+}
+
+img {
+  max-width: 256px;
+  max-height: 256px;
+  display: block;
+  margin-bottom: 8px;
+  background: #2b3449;
+}
+
+.path {
+  font-size: 12px;
+  word-break: break-all;
+  color: #d6def3;
+}
+
+.rawBox {
+  width: 256px;
+  height: 160px;
+  background: #2a3246;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #98a2bd;
+  margin-bottom: 8px;
+}
+
+.controls {
+  margin: 8px 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

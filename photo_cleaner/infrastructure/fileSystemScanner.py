@@ -95,12 +95,24 @@ class FileSystemScanner:
         ret: list[dict[str, Any]] = []
 
         rootPath = Path(in_rootPath)
+        jpegExtensions = {
+            str(extension).strip().lower()
+            for extension in in_jpegExtensions
+            if str(extension).strip()
+        }
+        rawExtensions = {
+            str(extension).strip().lower()
+            for extension in in_rawExtensions
+            if str(extension).strip()
+        }
 
         supportedExtensions = (
-            in_jpegExtensions |
-            in_rawExtensions
+            jpegExtensions |
+            rawExtensions
         )
 
+        skippedDirectoryCount = 0
+        scanDirectoryErrorCount = 0
         scannedFilesCount = 0
         matchedFilesCount = 0
         errorCount = 0
@@ -110,12 +122,25 @@ class FileSystemScanner:
         if in_excludedPathPrefixes:
             print(f"excluded path prefixes: {in_excludedPathPrefixes}")
 
+        def onWalkError(
+            in_error: OSError,
+        ) -> None:
+            nonlocal scanDirectoryErrorCount
+            scanDirectoryErrorCount += 1
+            print(
+                "scan directory failed: "
+                f"path={getattr(in_error, 'filename', None)} "
+                f"error={in_error}"
+            )
+
         for currentRoot, dirnames, files in os.walk(
             rootPath,
             topdown=True,
+            onerror=onWalkError,
         ):
             print(f"scan directory: {currentRoot}, files={len(files)}")
 
+            beforeCount = len(dirnames)
             dirnames[:] = [
                 dirnameValue
                 for dirnameValue in dirnames
@@ -125,6 +150,7 @@ class FileSystemScanner:
                     in_excludedPathPrefixes,
                 )
             ]
+            skippedDirectoryCount += max(0, beforeCount - len(dirnames))
 
             for fileName in files:
                 scannedFilesCount += 1
@@ -156,20 +182,9 @@ class FileSystemScanner:
                         fullPath.relative_to(rootPath)
                     )
 
-                    isRaw = extension in in_rawExtensions
-                    isJpeg = extension in in_jpegExtensions
-
-                    metadata = {
-                        "width": None,
-                        "height": None,
-                        "cameraModel": None,
-                        "exifOrientation": None,
-                    }
-
-                    if isJpeg:
-                        metadata = self._metadataReader.readMetadata(fullPath)
-                    elif isRaw and self._rawMetadataReader is not None:
-                        metadata = self._rawMetadataReader.readMetadata(fullPath)
+                    isRaw = extension in rawExtensions
+                    isJpeg = extension in jpegExtensions
+                    metadata = self._readMetadataForFile(fullPath, isRaw, isJpeg)
 
                     ret.append({
                         "id": str(uuid.uuid4()),
@@ -203,7 +218,56 @@ class FileSystemScanner:
 
         print(
             f"scan finished: scanned={scannedFilesCount}, "
-            f"matched={matchedFilesCount}, errors={errorCount}"
+            f"matched={matchedFilesCount}, errors={errorCount}, "
+            f"skippedDirs={skippedDirectoryCount}, walkErrors={scanDirectoryErrorCount}"
         )
+
+        return ret
+
+    def _readMetadataForFile(
+        self,
+        in_fullPath: Path,
+        in_isRaw: bool,
+        in_isJpeg: bool,
+    ) -> dict[str, Any]:
+        ret = {
+            "width": None,
+            "height": None,
+            "cameraModel": None,
+            "exifOrientation": None,
+        }
+
+        if in_isJpeg:
+            ret = self._mergeMetadata(
+                ret,
+                self._metadataReader.readMetadata(in_fullPath),
+            )
+
+        if self._rawMetadataReader is not None:
+            rawMetadata = self._rawMetadataReader.readMetadata(in_fullPath)
+            ret = self._mergeMetadata(ret, rawMetadata)
+
+            if in_isRaw and (
+                rawMetadata.get("width") is None and
+                rawMetadata.get("height") is None and
+                rawMetadata.get("cameraModel") is None and
+                rawMetadata.get("exifOrientation") is None
+            ):
+                print(f"raw metadata is empty: {in_fullPath}")
+
+        return ret
+
+    def _mergeMetadata(
+        self,
+        in_current: dict[str, Any],
+        in_new: dict[str, Any],
+    ) -> dict[str, Any]:
+        ret = dict(in_current)
+        keys = ("width", "height", "cameraModel", "exifOrientation")
+
+        for key in keys:
+            newValue = in_new.get(key)
+            if newValue is not None:
+                ret[key] = newValue
 
         return ret

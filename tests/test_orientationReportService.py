@@ -1,7 +1,6 @@
 import sqlite3
 import tempfile
 import unittest
-import json
 from pathlib import Path
 
 from PIL import Image
@@ -32,7 +31,7 @@ class FakePredictor:
 
 
 class OrientationReportServiceTests(unittest.TestCase):
-    def test_buildReport_writesMlHtml(
+    def test_buildReport_storesOrientationActionsAndBuildsThumbnails(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tempDir:
@@ -96,20 +95,17 @@ class OrientationReportServiceTests(unittest.TestCase):
                 [],
                 [],
                 True,
-                "orientation_ml.html",
-                "ML orientation report",
                 "orientation_ml",
             )
 
-            reportPath = workspacePath / "reports" / "orientation_ml.html"
-            self.assertTrue(reportPath.is_file())
-            reportText = reportPath.read_text(encoding="utf-8")
-            self.assertIn("rotate90", reportText)
-            self.assertIn("Candidate #1", reportText)
-
-            actionsPath = workspacePath / "actions.json"
-            self.assertTrue(actionsPath.is_file())
-            actionsPayload = json.loads(
-                actionsPath.read_text(encoding="utf-8"),
+            orientationActions = repository.getOrientationActions()
+            self.assertIn("id-test", orientationActions)
+            self.assertEqual(
+                orientationActions["id-test"]["suggestedAction"],
+                "rotate90",
             )
-            self.assertIn("id-test", actionsPayload["orientation"]["items"])
+
+            thumbsPath = workspacePath / "thumbs" / "orientation_ml"
+            self.assertTrue((thumbsPath / "id-test_original.jpg").is_file())
+            self.assertTrue((thumbsPath / "id-test_rotate90.jpg").is_file())
+            self.assertTrue((thumbsPath / "id-test_rotate270.jpg").is_file())

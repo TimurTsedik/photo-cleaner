@@ -70,3 +70,47 @@ class OrientationDatasetBuilderTests(unittest.TestCase):
                 buildResult["idToPartition"]["img-1"],
                 "train",
             )
+
+    def test_buildOrientationDatasetFromArchive_appliesBaseRotation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            archiveRoot = Path(tempDir) / "archive"
+            archiveRoot.mkdir()
+
+            imagePath = archiveRoot / "sample.jpg"
+            rgbImage = Image.new("RGB", (2, 3), color=(0, 0, 0))
+            rgbImage.putpixel((0, 0), (255, 0, 0))
+            rgbImage.putpixel((0, 2), (0, 0, 255))
+            rgbImage.save(imagePath, "JPEG")
+
+            outputRoot = Path(tempDir) / "out"
+            items = [
+                {
+                    "id": "img-rot",
+                    "relativePath": "sample.jpg",
+                    "baseRotation": 90,
+                },
+            ]
+
+            buildResult = buildOrientationDatasetFromArchive(
+                items,
+                archiveRoot,
+                outputRoot,
+                1,
+                1.0,
+                0.0,
+                16,
+                90,
+            )
+
+            self.assertEqual(len(buildResult["errors"]), 0)
+            train0 = outputRoot / "train" / "0" / "img-rot.jpg"
+            self.assertTrue(train0.is_file())
+
+            with Image.open(train0) as imageRotated:
+                topLeftPixel = imageRotated.getpixel((0, 0))
+                self.assertGreater(
+                    topLeftPixel[2],
+                    topLeftPixel[0],
+                )
