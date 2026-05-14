@@ -64,7 +64,7 @@ class ControlPanelState:
         self._finished = True
         self._reportUrl = None
         self._commandName = ""
-        self._ensureDuplicateTrashInExcludedPrefixes()
+        self._ensureTrashDirsInExcludedPrefixes()
 
     def _reloadConfig(
         self,
@@ -629,7 +629,7 @@ class ControlPanelState:
                 archiveBlock["root"] = archiveRoot
             orientationBlock["trustedCameraModels"] = trustedCameraModels
             orientationBlock["excludedPathPrefixes"] = excludedPathPrefixes
-            self._ensureDuplicateTrashInExcludedPrefixes(configToSave)
+            self._ensureTrashDirsInExcludedPrefixes(configToSave)
 
             yamlText = yaml.safe_dump(
                 configToSave,
@@ -646,7 +646,7 @@ class ControlPanelState:
             }
             return ret
 
-    def _ensureDuplicateTrashInExcludedPrefixes(
+    def _ensureTrashDirsInExcludedPrefixes(
         self,
         in_configToSave: dict | None = None,
     ) -> None:
@@ -665,19 +665,7 @@ class ControlPanelState:
         ).strip()
         if not duplicateTrashRaw:
             duplicateTrashRaw = ".photo-cleaner-trash/duplicates"
-        duplicateTrashPath = Path(duplicateTrashRaw)
-
-        if duplicateTrashPath.is_absolute():
-            duplicateExcludedPrefix = str(duplicateTrashPath)
-        else:
-            duplicateExcludedPrefix = duplicateTrashRaw
-            if archiveRootRaw:
-                try:
-                    duplicateExcludedPrefix = str(
-                        (archiveRootPath / duplicateTrashPath).resolve()
-                    )
-                except Exception:
-                    duplicateExcludedPrefix = duplicateTrashRaw
+        reorientedTrashRaw = ".photo-cleaner-trash/reoriented"
 
         excludedPrefixes = orientationBlock.get("excludedPathPrefixes", [])
         if not isinstance(excludedPrefixes, list):
@@ -688,12 +676,24 @@ class ControlPanelState:
             for item in excludedPrefixes
             if str(item).strip()
         }
-        normalizedDuplicatePrefix = (
-            duplicateExcludedPrefix.strip().replace("\\", "/").rstrip("/")
+        requiredPrefixes = self._buildRequiredTrashExcludedPrefixes(
+            archiveRootRaw,
+            archiveRootPath,
+            duplicateTrashRaw,
+            reorientedTrashRaw,
         )
 
-        if normalizedDuplicatePrefix not in normalizedExistingPrefixes:
-            excludedPrefixes.append(duplicateExcludedPrefix)
+        hasChanges = False
+        for requiredPrefix in requiredPrefixes:
+            normalizedRequiredPrefix = (
+                requiredPrefix.strip().replace("\\", "/").rstrip("/")
+            )
+            if normalizedRequiredPrefix and normalizedRequiredPrefix not in normalizedExistingPrefixes:
+                excludedPrefixes.append(requiredPrefix)
+                normalizedExistingPrefixes.add(normalizedRequiredPrefix)
+                hasChanges = True
+
+        if hasChanges:
             orientationBlock["excludedPathPrefixes"] = excludedPrefixes
 
             if in_configToSave is None:
@@ -704,6 +704,37 @@ class ControlPanelState:
                 )
                 self._configPath.write_text(yamlText, encoding="utf-8")
                 self._reloadConfig()
+
+    def _buildRequiredTrashExcludedPrefixes(
+        self,
+        in_archiveRootRaw: str,
+        in_archiveRootPath: Path,
+        in_duplicateTrashRaw: str,
+        in_reorientedTrashRaw: str,
+    ) -> list[str]:
+        ret: list[str] = []
+
+        trashPrefixesRaw = [
+            in_duplicateTrashRaw,
+            in_reorientedTrashRaw,
+        ]
+        for trashPrefixRaw in trashPrefixesRaw:
+            trashPath = Path(str(trashPrefixRaw).strip())
+            if trashPath.is_absolute():
+                ret.append(str(trashPath))
+                continue
+
+            prefixValue = str(trashPath)
+            if in_archiveRootRaw:
+                try:
+                    prefixValue = str(
+                        (in_archiveRootPath / trashPath).resolve()
+                    )
+                except Exception:
+                    prefixValue = str(trashPath)
+            ret.append(prefixValue)
+
+        return ret
 
 
 class _IndexResource:

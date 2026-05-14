@@ -36,7 +36,6 @@ const manualBadgeNode = document.getElementById("manualBadge");
 let isRunning = false;
 let logOffset = 0;
 let hasCompletedFullRun = false;
-let pendingReportWindow = null;
 
 function updateCommandButtonsState() {
   const allButtons = Array.from(document.querySelectorAll("button"));
@@ -82,22 +81,15 @@ function openReport(url) {
   window.open(url, "_blank");
 }
 
-function commandHasAutoReport(command) {
-  const ret = command === "full-run" || command === "duplicates" || command === "orientation";
-  return ret;
-}
-
-function preparePendingReportWindow(command) {
-  let ret = null;
-  if (!commandHasAutoReport(command)) {
-    return ret;
+function openReportWhenReady(url) {
+  const popupWindow = window.open(url, "_blank");
+  if (popupWindow && !popupWindow.closed) {
+    return;
   }
-  ret = window.open("about:blank", "_blank");
-  if (ret && !ret.closed) {
-    ret.document.title = "Photo Cleaner report";
-    ret.document.body.innerHTML = "<p style='font-family: sans-serif; padding: 16px;'>Подготавливаем отчет...</p>";
-  }
-  return ret;
+  appendLogs(
+    "Браузер заблокировал открытие новой вкладки с отчетом. " +
+    "Разрешите pop-up для панели и откройте отчет кнопкой вручную."
+  );
 }
 
 function renderSimpleList(listNode, values) {
@@ -301,7 +293,6 @@ async function runCommand(command) {
   isRunning = true;
   updateCommandButtonsState();
   logOffset = 0;
-  pendingReportWindow = preparePendingReportWindow(command);
   appendLogs(">>> start: " + command);
   try {
     const response = await fetch("/api/run", {
@@ -319,7 +310,6 @@ async function runCommand(command) {
     appendLogs("Ошибка: " + String(error));
   } finally {
     appendLogs(">>> done: " + command);
-    pendingReportWindow = null;
     isRunning = false;
     updateCommandButtonsState();
   }
@@ -402,11 +392,7 @@ async function pollLogsUntilDone(command) {
       }
       if (payload.reportUrl) {
         appendLogs(">>> opening report: " + payload.reportUrl);
-        if (pendingReportWindow && !pendingReportWindow.closed) {
-          pendingReportWindow.location.href = payload.reportUrl;
-        } else {
-          window.open(payload.reportUrl, "_blank");
-        }
+        openReportWhenReady(payload.reportUrl);
       }
       await refreshHeaderData();
       await new Promise((resolve) => setTimeout(resolve, 250));

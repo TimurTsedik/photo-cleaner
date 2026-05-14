@@ -100,7 +100,7 @@ python -m photo_cleaner --config config.yaml
   - `Сохранить config.yaml`
   - `Перечитать config.yaml`
 
-Важно: папка `duplicates.trashDir` автоматически добавляется в ignored-list ориентации.
+Важно: папки `duplicates.trashDir` и `.photo-cleaner-trash/reoriented` автоматически добавляются в `orientation.excludedPathPrefixes`.
 
 ### 4) `Команды`
 

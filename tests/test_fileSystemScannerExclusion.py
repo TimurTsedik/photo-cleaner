@@ -4,7 +4,6 @@ from unittest import TestCase
 
 from photo_cleaner.infrastructure.fileSystemScanner import (
     FileSystemScanner,
-    pathInsidePhotoCleanerTrash,
     pathMatchesExcludedPrefix,
 )
 from photo_cleaner.infrastructure.metadataReader import MetadataReader
@@ -93,28 +92,7 @@ class FileSystemScannerExclusionTests(TestCase):
             self.assertIn("visible.jpg", relativePaths)
             self.assertNotIn("blocked/hidden.jpg", relativePaths)
 
-    def test_pathInsidePhotoCleanerTrash_detectsNestedPath(
-        self,
-    ) -> None:
-        with TemporaryDirectory() as tmpDir:
-            rootPath = Path(tmpDir)
-            candidatePath = (
-                rootPath /
-                ".photo-cleaner-trash" /
-                "reoriented" /
-                "x.jpg"
-            )
-            candidatePath.parent.mkdir(parents=True, exist_ok=True)
-            candidatePath.write_bytes(_VALID_MINIMAL_JPEG_BYTES)
-
-            self.assertTrue(
-                pathInsidePhotoCleanerTrash(
-                    candidatePath,
-                    rootPath,
-                ),
-            )
-
-    def test_scan_skipsPhotoCleanerTrashDirectory(
+    def test_scan_skipsPhotoCleanerTrashDirectoryFromExcludedPrefixes(
         self,
     ) -> None:
         scanner = FileSystemScanner(
@@ -133,7 +111,9 @@ class FileSystemScannerExclusionTests(TestCase):
                 in_rootPath=str(rootPath),
                 in_jpegExtensions={".jpg"},
                 in_rawExtensions=set(),
-                in_excludedPathPrefixes=[],
+                in_excludedPathPrefixes=[
+                    str(rootPath / ".photo-cleaner-trash" / "reoriented"),
+                ],
             )
 
             relativePaths = {item["relativePath"].replace("\\", "/") for item in photos}

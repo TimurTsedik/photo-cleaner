@@ -33,6 +33,7 @@ orientation:
   excludedPathPrefixes:
   - /Volumes/My Passport/ARCHIVE/Photos/astro/
   - /Users/timur555/Downloads/temp_arch/.photo-cleaner-trash/duplicates
+  - /Users/timur555/Downloads/temp_arch/.photo-cleaner-trash/reoriented
   neverRotateExtensions:
   - .cr2
   - .cr3
