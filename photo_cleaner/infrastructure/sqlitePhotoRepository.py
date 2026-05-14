@@ -216,6 +216,27 @@ class SqlitePhotoRepository:
 
         return ret
 
+    def getPhotosForHashing(
+        self,
+    ) -> list[dict[str, Any]]:
+        ret: list[dict[str, Any]] = []
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT id, relativePath, sha256
+                FROM photos
+                ORDER BY relativePath
+            """)
+            for row in cursor.fetchall():
+                ret.append(dict(row))
+        finally:
+            connection.close()
+
+        return ret
+
     def updatePhotoSha256(
         self,
         in_photoId: str,
@@ -671,10 +692,6 @@ class SqlitePhotoRepository:
         self,
     ) -> set[str]:
         ret = self.getDuplicateCandidatePhotoIds()
-        similarGroups = self.getSimilarDuplicateGroups(ret)
-        for group in similarGroups:
-            for item in group:
-                ret.add(str(item["id"]))
         return ret
 
     def getTotalPhotosCount(

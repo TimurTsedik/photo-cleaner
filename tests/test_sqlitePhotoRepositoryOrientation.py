@@ -638,7 +638,7 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
             ids = {item["id"] for item in similarGroups[0]}
             self.assertEqual(ids, {"sim-1", "sim-2"})
 
-    def test_getAllDuplicateCandidatePhotoIds_unionsExactAndSimilar(
+    def test_getAllDuplicateCandidatePhotoIds_returnsOnlyExactDuplicates(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tempDir:
@@ -696,7 +696,7 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
             duplicateIds = repository.getAllDuplicateCandidatePhotoIds()
             self.assertEqual(
                 duplicateIds,
-                {"exact-1", "exact-2", "sim-1", "sim-2"},
+                {"exact-1", "exact-2"},
             )
 
     def test_getSimilarDuplicateGroups_doesNotMergeSequentialFrameNames(

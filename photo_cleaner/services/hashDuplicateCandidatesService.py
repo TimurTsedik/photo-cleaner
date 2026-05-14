@@ -21,24 +21,32 @@ class HashDuplicateCandidatesService:
         self,
         in_archiveRoot: str,
     ) -> None:
-        duplicateSizeGroups = self._repository.getDuplicateSizeGroups()
+        photosForHashing = self._repository.getPhotosForHashing()
         rootPath = Path(in_archiveRoot)
+        hashedCount = 0
+        skippedCount = 0
 
-        for groupIndex, group in enumerate(duplicateSizeGroups, start=1):
+        for photoIndex, photo in enumerate(photosForHashing, start=1):
             print(
-                f"hash group {groupIndex}/{len(duplicateSizeGroups)} "
-                f"size={group[0]['size']} files={len(group)}"
+                f"hash photo {photoIndex}/{len(photosForHashing)} "
+                f"path={photo['relativePath']}"
             )
 
-            for photo in group:
-                if photo["sha256"]:
-                    continue
+            if photo["sha256"]:
+                skippedCount += 1
+                continue
 
-                fullPath = rootPath / photo["relativePath"]
+            fullPath = rootPath / photo["relativePath"]
 
-                sha256 = self._hasher.calculate(fullPath)
+            sha256 = self._hasher.calculate(fullPath)
 
-                self._repository.updatePhotoSha256(
-                    photo["id"],
-                    sha256,
-                )
+            self._repository.updatePhotoSha256(
+                photo["id"],
+                sha256,
+            )
+            hashedCount += 1
+
+        print(
+            "hash duplicates finished: "
+            f"total={len(photosForHashing)}, hashed={hashedCount}, skipped={skippedCount}"
+        )

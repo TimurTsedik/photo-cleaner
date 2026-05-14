@@ -390,17 +390,14 @@ class ControlPanelState:
                 else:
                     untrustedFilesCount += countValue
 
-            duplicateCandidateIds = repository.getDuplicateCandidatePhotoIds()
             exactDuplicateGroups = repository.getSha256DuplicateGroups()
-            similarDuplicateGroups = repository.getSimilarDuplicateGroups(duplicateCandidateIds)
 
             exactDuplicateFilesCount = 0
             for group in exactDuplicateGroups:
                 exactDuplicateFilesCount += len(group)
 
             similarDuplicateFilesCount = 0
-            for group in similarDuplicateGroups:
-                similarDuplicateFilesCount += len(group)
+            similarDuplicateGroupsCount = 0
 
             orientationCandidates = repository.getOrientationCandidatesForFaceDetection(
                 orientationBlock.get("candidateExtensions", []),
@@ -434,6 +431,9 @@ class ControlPanelState:
             duplicateConfirmedCount = 0
             duplicatePendingCount = 0
             for item in duplicateActions.values():
+                groupTypeValue = str(item.get("groupType", "")).strip().lower()
+                if groupTypeValue and groupTypeValue != "exact":
+                    continue
                 statusValue = str(item.get("status", "pending")).strip().lower()
                 if statusValue in {"confirmed", "applied"}:
                     duplicateConfirmedCount += 1
@@ -459,7 +459,7 @@ class ControlPanelState:
                 "dbUpdatedAt": dbUpdatedAt,
                 "exactDuplicateGroupsCount": len(exactDuplicateGroups),
                 "exactDuplicateFilesCount": exactDuplicateFilesCount,
-                "similarDuplicateGroupsCount": len(similarDuplicateGroups),
+                "similarDuplicateGroupsCount": similarDuplicateGroupsCount,
                 "similarDuplicateFilesCount": similarDuplicateFilesCount,
                 "orientationCandidatesCount": len(orientationCandidates),
                 "orientationSuggestedAutoCount": orientationAutoCount,
@@ -894,13 +894,6 @@ class _DynamicDuplicatesReportResource:
     ) -> None:
         repository = self._state.getRepository()
         exactDuplicateGroups = repository.getSha256DuplicateGroups()
-        exactDuplicateIds: set[str] = set()
-        for group in exactDuplicateGroups:
-            for item in group:
-                exactDuplicateIds.add(str(item["id"]))
-        similarDuplicateGroups = repository.getSimilarDuplicateGroups(
-            exactDuplicateIds,
-        )
         duplicateActions = repository.getDuplicateActions()
         actionsPayload = repository.buildActionsPayloadFromDb()
 
@@ -908,11 +901,6 @@ class _DynamicDuplicatesReportResource:
         for group in exactDuplicateGroups:
             groupedEntries.append({
                 "groupType": "exact",
-                "group": group,
-            })
-        for group in similarDuplicateGroups:
-            groupedEntries.append({
-                "groupType": "similar",
                 "group": group,
             })
 
@@ -934,12 +922,8 @@ class _DynamicDuplicatesReportResource:
             if selectedKeepPhotoId not in photoIds:
                 selectedKeepPhotoId = str(keepItem["id"])
             statusValue = str(existingGroupAction.get("status", "pending"))
-            if groupType == "exact":
-                groupLabel = "Exact duplicate"
-                ruleLabel = "sha256"
-            else:
-                groupLabel = "Similar duplicate"
-                ruleLabel = "name + dimensions + camera + mtime"
+            groupLabel = "Exact duplicate"
+            ruleLabel = "sha256"
 
             cardsParts.append(
                 f'<div class="card group" data-group-key="{html.escape(groupKey)}">'
@@ -1016,8 +1000,7 @@ class _DynamicDuplicatesReportResource:
 
         summaryHtml = (
             f"<p>Total duplicate groups: {len(groupedEntries)}</p>"
-            f"<p>Exact groups: {len(exactDuplicateGroups)}, "
-            f"Similar groups: {len(similarDuplicateGroups)}</p>"
+            f"<p>Exact groups: {len(exactDuplicateGroups)}</p>"
         )
         reportHtml = (
             "<!doctype html>"
@@ -1026,7 +1009,7 @@ class _DynamicDuplicatesReportResource:
             "<link rel=\"stylesheet\" href=\"/assets/reports/reportCommon.css\">"
             "</head><body>"
             "<h1>Exact duplicate report</h1>"
-            "<div class=\"subtitle\">Exact + similar duplicate groups</div>"
+            "<div class=\"subtitle\">Duplicate groups by SHA-256</div>"
             "<div class=\"toolbar\">"
             "<button onclick=\"pcDupApplyAllRecommended()\">"
             "Согласиться со всеми рекомендациями"

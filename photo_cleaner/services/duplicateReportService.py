@@ -34,17 +34,9 @@ class DuplicateReportService:
         print(f"workspace path: {in_workspacePath}")
 
         exactDuplicateGroups = self._repository.getSha256DuplicateGroups()
-        exactDuplicateIds: set[str] = set()
-        for group in exactDuplicateGroups:
-            for item in group:
-                exactDuplicateIds.add(str(item["id"]))
-        similarDuplicateGroups = self._repository.getSimilarDuplicateGroups(
-            exactDuplicateIds,
-        )
         print(
             "duplicate groups loaded: "
-            f"exact={len(exactDuplicateGroups)}, "
-            f"similar={len(similarDuplicateGroups)}"
+            f"exact={len(exactDuplicateGroups)}"
         )
 
         workspacePath = Path(in_workspacePath)
@@ -57,13 +49,6 @@ class DuplicateReportService:
             groupedEntries.append(
                 {
                     "groupType": "exact",
-                    "group": group,
-                }
-            )
-        for group in similarDuplicateGroups:
-            groupedEntries.append(
-                {
-                    "groupType": "similar",
                     "group": group,
                 }
             )

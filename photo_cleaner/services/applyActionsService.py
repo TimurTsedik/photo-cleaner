@@ -270,6 +270,13 @@ class ApplyActionsService:
         movePhotoIdToGroupKey: dict[str, str] = {}
         groupKeyToMovePhotoIds: dict[str, list[str]] = {}
         for groupKey, groupPayload in duplicateActions.items():
+            groupTypeValue = str(groupPayload.get("groupType", "")).strip().lower()
+            groupKeyValue = str(groupKey).strip().lower()
+            if groupKeyValue and not groupKeyValue.startswith("exact:"):
+                continue
+            if groupTypeValue and groupTypeValue != "exact":
+                continue
+
             statusValue = str(groupPayload.get("status", "")).strip().lower()
             selectedKeepPhotoId = str(groupPayload.get("selectedKeepPhotoId", "")).strip()
             if (

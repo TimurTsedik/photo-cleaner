@@ -58,6 +58,7 @@ ipython_config.py
 .env
 .env.*
 *.local
+config.yaml
 
 # Logs and runtime files
 *.log
