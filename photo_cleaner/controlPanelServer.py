@@ -598,13 +598,6 @@ class ControlPanelState:
         in_payload: dict,
     ) -> dict:
         with self._lock:
-            if self._running:
-                ret = {
-                    "success": False,
-                    "message": "command is running, wait for completion",
-                }
-                return ret
-
             configToSave = ConfigLoader().load(str(self._configPath))
             archiveBlock = configToSave.setdefault("archive", {})
             orientationBlock = configToSave.setdefault("orientation", {})

@@ -4,6 +4,8 @@ const orientationRunButtonNode = document.getElementById("orientationRunButton")
 const applyButtonNode = document.getElementById("applyButton");
 const undoApplyButtonNode = document.getElementById("undoApplyButton");
 const clearDbButtonNode = document.getElementById("clearDbButton");
+const saveConfigButtonNode = document.getElementById("saveConfigButton");
+const reloadConfigButtonNode = document.getElementById("reloadConfigButton");
 const openDuplicatesReportButtonNode = document.getElementById("openDuplicatesReportButton");
 const openOrientationReportButtonNode = document.getElementById("openOrientationReportButton");
 const trustedCameraModelsNode = document.getElementById("trustedCameraModels");
@@ -46,8 +48,10 @@ function updateCommandButtonsState() {
 
     const isFullRunButton = fullRunButtonNode !== null && buttonNode === fullRunButtonNode;
     const isClearDbButton = clearDbButtonNode !== null && buttonNode === clearDbButtonNode;
+    const isSaveConfigButton = saveConfigButtonNode !== null && buttonNode === saveConfigButtonNode;
+    const isReloadConfigButton = reloadConfigButtonNode !== null && buttonNode === reloadConfigButtonNode;
 
-    if (isClearDbButton) {
+    if (isClearDbButton || isSaveConfigButton || isReloadConfigButton) {
       buttonNode.disabled = false;
       continue;
     }
@@ -248,10 +252,6 @@ async function loadConfigEditor() {
 }
 
 async function saveConfig() {
-  if (isRunning) {
-    appendLogs("Сначала дождись завершения текущей команды, потом сохраняй config.");
-    return;
-  }
   const payload = {
     archiveRoot: cfgArchiveRootNode.value,
     trustedCameraModels: splitLines(cfgTrustedCamerasNode.value),
