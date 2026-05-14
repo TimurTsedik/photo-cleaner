@@ -1,0 +1,30 @@
+.archiveGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.archiveCard {
+  min-height: 260px;
+}
+
+.archivePath {
+  font-size: 13px;
+  color: #d6def3;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+
+.archivePreview {
+  margin-bottom: 8px;
+}
+
+.archiveImage {
+  width: 256px;
+  height: 192px;
+  object-fit: contain;
+}
+
+.archiveMeta {
+  margin-bottom: 4px;
+}

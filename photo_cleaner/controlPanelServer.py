@@ -19,6 +19,9 @@ from photo_cleaner.infrastructure.actionsFileStore import (
 from photo_cleaner.infrastructure.sqlitePhotoRepository import (
     SqlitePhotoRepository,
 )
+from photo_cleaner.infrastructure.thumbnailGenerator import (
+    ThumbnailGenerator,
+)
 from photo_cleaner.services.duplicateKeepSelector import (
     DuplicateKeepSelector,
 )
@@ -52,6 +55,7 @@ class ControlPanelState:
             exist_ok=True,
         )
         self._actionsFileStore = ActionsFileStore()
+        self._thumbnailGenerator = ThumbnailGenerator()
         self._lock = Lock()
         self._running = False
         self._logBuffer = io.StringIO()
@@ -216,6 +220,130 @@ class ControlPanelState:
         self,
     ) -> SqlitePhotoRepository:
         ret = self._buildRepositoryForActions()
+        return ret
+
+    def getArchivePhotosPage(
+        self,
+        in_page: int,
+        in_pageSize: int,
+    ) -> dict:
+        repository = self._buildRepositoryForActions()
+        pagePayload = repository.getArchivePhotosPage(in_page, in_pageSize)
+        rawItems = pagePayload.get("items", [])
+        pageValue = int(pagePayload.get("page", 1))
+        pageSizeValue = int(pagePayload.get("pageSize", 20))
+        totalValue = int(pagePayload.get("total", 0))
+        totalPages = 0
+        if pageSizeValue > 0:
+            totalPages = (totalValue + pageSizeValue - 1) // pageSizeValue
+
+        items: list[dict] = []
+        for item in rawItems:
+            if not isinstance(item, dict):
+                continue
+            out_item = dict(item)
+            photoId = str(out_item.get("id", ""))
+            thumbnailUrl = None
+            if photoId:
+                thumbnailPath = self._workspacePath / "thumbs" / f"{photoId}.jpg"
+                if self._isArchiveThumbnailStale(out_item, thumbnailPath):
+                    self._ensureArchiveThumbnail(out_item, thumbnailPath)
+                if thumbnailPath.exists():
+                    thumbnailUrl = f"/workspace/thumbs/{photoId}.jpg"
+            out_item["thumbnailUrl"] = thumbnailUrl
+            items.append(out_item)
+
+        ret = {
+            "page": pageValue,
+            "pageSize": pageSizeValue,
+            "total": totalValue,
+            "totalPages": totalPages,
+            "hasPrev": pageValue > 1,
+            "hasNext": pageValue < totalPages,
+            "items": items,
+        }
+        return ret
+
+    def _ensureArchiveThumbnail(
+        self,
+        in_photoItem: dict,
+        in_thumbnailPath: Path,
+    ) -> None:
+        extensionValue = str(in_photoItem.get("extension") or "").lower().strip()
+        if extensionValue not in {".jpg", ".jpeg"}:
+            return
+
+        thumbnailsBlock = self._config.get("thumbnails", {})
+        thumbnailsEnabled = bool(thumbnailsBlock.get("enabled", True))
+        if not thumbnailsEnabled:
+            return
+
+        archiveRoot = Path(str(self._config.get("archive", {}).get("root", ""))).resolve()
+        relativePath = str(in_photoItem.get("relativePath", "")).strip()
+        if not relativePath:
+            return
+        sourcePath = (archiveRoot / relativePath).resolve()
+
+        try:
+            sourcePath.relative_to(archiveRoot)
+        except ValueError:
+            return
+
+        if not sourcePath.is_file():
+            return
+
+        maxSideValue = int(thumbnailsBlock.get("maxSide", 256))
+        qualityValue = int(thumbnailsBlock.get("quality", 75))
+        if maxSideValue < 32:
+            maxSideValue = 32
+        if qualityValue < 10:
+            qualityValue = 10
+        if qualityValue > 100:
+            qualityValue = 100
+
+        self._thumbnailGenerator.generateThumbnail(
+            sourcePath,
+            in_thumbnailPath,
+            maxSideValue,
+            qualityValue,
+        )
+
+    def _isArchiveThumbnailStale(
+        self,
+        in_photoItem: dict,
+        in_thumbnailPath: Path,
+    ) -> bool:
+        ret = True
+
+        if not in_thumbnailPath.exists():
+            return ret
+
+        extensionValue = str(in_photoItem.get("extension") or "").lower().strip()
+        if extensionValue not in {".jpg", ".jpeg"}:
+            ret = False
+            return ret
+
+        archiveRoot = Path(str(self._config.get("archive", {}).get("root", ""))).resolve()
+        relativePath = str(in_photoItem.get("relativePath", "")).strip()
+        if not relativePath:
+            return ret
+
+        sourcePath = (archiveRoot / relativePath).resolve()
+        try:
+            sourcePath.relative_to(archiveRoot)
+        except ValueError:
+            return ret
+
+        if not sourcePath.is_file():
+            return ret
+
+        try:
+            sourceMtime = float(sourcePath.stat().st_mtime)
+            thumbnailMtime = float(in_thumbnailPath.stat().st_mtime)
+            ret = thumbnailMtime < sourceMtime
+        except OSError:
+            ret = True
+
         return ret
 
     def getSummary(
@@ -681,6 +809,29 @@ class _ActionsResource:
         out_resp.media = self._state.saveActions(scope, payload)
 
 
+class _ArchivePhotosResource:
+    def __init__(
+        self,
+        in_state: ControlPanelState,
+    ) -> None:
+        self._state = in_state
+
+    def on_get(
+        self,
+        in_req: falcon.Request,
+        out_resp: falcon.Response,
+    ) -> None:
+        pageValue = in_req.get_param_as_int("page") or 1
+        pageSizeValue = in_req.get_param_as_int("pageSize") or 20
+        out_resp.set_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        out_resp.set_header("Pragma", "no-cache")
+        out_resp.set_header("Expires", "0")
+        out_resp.media = self._state.getArchivePhotosPage(
+            pageValue,
+            pageSizeValue,
+        )
+
+
 class _DynamicDuplicatesReportResource:
     def __init__(
         self,
@@ -1063,6 +1214,38 @@ class _DynamicOrientationReportResource:
         return ret
 
 
+class _ArchiveReportResource:
+    def on_get(
+        self,
+        in_req: falcon.Request,
+        out_resp: falcon.Response,
+    ) -> None:
+        _ = in_req
+        out_resp.set_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        out_resp.set_header("Pragma", "no-cache")
+        out_resp.set_header("Expires", "0")
+        out_resp.content_type = "text/html; charset=utf-8"
+        out_resp.text = (
+            "<!doctype html>"
+            "<html><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+            "<title>Archive overview</title>"
+            "<link rel=\"stylesheet\" href=\"/assets/reports/reportCommon.css\">"
+            "<link rel=\"stylesheet\" href=\"/assets/reports/archiveReport.css\">"
+            "</head><body>"
+            "<h1>Фотоархив</h1>"
+            "<div class=\"subtitle\">Обзор файлов архива с пагинацией по 20 фото</div>"
+            "<div class=\"toolbar\">"
+            "<button id=\"archivePrevButton\" disabled>Назад</button>"
+            "<button id=\"archiveNextButton\" disabled>Вперед</button>"
+            "<span class=\"meta\" id=\"archivePageInfo\">Страница 1</span>"
+            "</div>"
+            "<div id=\"archivePhotosGrid\" class=\"archiveGrid\"></div>"
+            "<script src=\"/assets/reports/archiveReport.js\"></script>"
+            "</body></html>"
+        )
+
+
 class _WorkspaceFileResource:
     def __init__(
         self,
@@ -1152,9 +1335,11 @@ def runControlPanelServer(
     app.add_route("/api/summary", _SummaryResource(state))
     app.add_route("/api/config", _ConfigResource(state))
     app.add_route("/api/actions", _ActionsResource(state))
+    app.add_route("/api/archive/photos", _ArchivePhotosResource(state))
     app.add_route("/api/health", _HealthResource())
     app.add_route("/reports/duplicates", _DynamicDuplicatesReportResource(state))
     app.add_route("/reports/orientation", _DynamicOrientationReportResource(state))
+    app.add_route("/reports/archive", _ArchiveReportResource())
     app.add_route("/assets/{in_assetPath:path}", _StaticAssetResource())
     app.add_route("/workspace/{in_relativePath:path}", _WorkspaceFileResource(state))
 

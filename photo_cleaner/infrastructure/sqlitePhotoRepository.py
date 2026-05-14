@@ -62,6 +62,10 @@ class SqlitePhotoRepository:
                     updatedAt REAL NOT NULL
                 )
             """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_photos_relativePath
+                ON photos(relativePath)
+            """)
 
             connection.commit()
 
@@ -965,6 +969,78 @@ class SqlitePhotoRepository:
         finally:
             connection.close()
 
+        return ret
+
+    def getArchivePhotosPage(
+        self,
+        in_page: int,
+        in_pageSize: int,
+    ) -> dict[str, Any]:
+        ret: dict[str, Any] = {
+            "page": 1,
+            "pageSize": 20,
+            "total": 0,
+            "items": [],
+        }
+
+        pageValue = int(in_page)
+        if pageValue < 1:
+            pageValue = 1
+        pageSizeValue = int(in_pageSize)
+        if pageSizeValue < 1:
+            pageSizeValue = 1
+        if pageSizeValue > 200:
+            pageSizeValue = 200
+
+        offsetValue = (pageValue - 1) * pageSizeValue
+        items: list[dict[str, Any]] = []
+        totalValue = 0
+
+        connection = sqlite3.connect(self._dbPath)
+        connection.row_factory = sqlite3.Row
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) AS countValue
+                FROM photos
+            """)
+            totalRow = cursor.fetchone()
+            if totalRow is not None:
+                totalValue = int(totalRow["countValue"])
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    relativePath,
+                    extension,
+                    size,
+                    mtime,
+                    width,
+                    height,
+                    cameraModel,
+                    exifOrientation,
+                    isRaw,
+                    isJpeg,
+                    thumbnailPath
+                FROM photos
+                ORDER BY relativePath
+                LIMIT ?
+                OFFSET ?
+                """,
+                (pageSizeValue, offsetValue),
+            )
+            for row in cursor.fetchall():
+                items.append(dict(row))
+        finally:
+            connection.close()
+
+        ret = {
+            "page": pageValue,
+            "pageSize": pageSizeValue,
+            "total": totalValue,
+            "items": items,
+        }
         return ret
 
     def _normalizeDuplicateStem(

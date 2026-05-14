@@ -130,6 +130,7 @@ class ApplyActionsServiceTests(unittest.TestCase):
             imagePath = archiveRoot / "rot.jpg"
             image = Image.new("RGB", (2, 3), color=(255, 0, 0))
             image.save(imagePath, "JPEG")
+            initialBytes = imagePath.read_bytes()
 
             dbPath = Path(tempDir) / "cleanup.db"
             repository = SqlitePhotoRepository(str(dbPath))
@@ -169,6 +170,11 @@ class ApplyActionsServiceTests(unittest.TestCase):
                 },
             )
 
+            thumbsPath = Path(tempDir) / "thumbs"
+            thumbsPath.mkdir(parents=True, exist_ok=True)
+            staleThumbPath = thumbsPath / "rot-id.jpg"
+            staleThumbPath.write_bytes(b"stale")
+
             service = ApplyActionsService(repository)
             applyResult = service.apply(
                 str(archiveRoot),
@@ -179,6 +185,12 @@ class ApplyActionsServiceTests(unittest.TestCase):
 
             with Image.open(imagePath) as rotatedImage:
                 self.assertEqual(rotatedImage.size, (3, 2))
+            self.assertFalse(staleThumbPath.exists())
+            reorientedOriginalPath = (
+                archiveRoot / ".photo-cleaner-trash" / "reoriented" / "rot.jpg"
+            )
+            self.assertTrue(reorientedOriginalPath.exists())
+            self.assertEqual(reorientedOriginalPath.read_bytes(), initialBytes)
             self.assertEqual(applyResult["orientationApplied"], 1)
             self.assertEqual(len(applyResult["errors"]), 0)
             orientationActions = repository.getOrientationActions()
@@ -245,6 +257,9 @@ class ApplyActionsServiceTests(unittest.TestCase):
             )
 
             self.assertEqual(initialBytes, imagePath.read_bytes())
+            self.assertFalse(
+                (archiveRoot / ".photo-cleaner-trash" / "reoriented" / "dry.jpg").exists()
+            )
             self.assertEqual(applyResult["orientationApplied"], 1)
             orientationActions = repository.getOrientationActions()
             self.assertEqual(
@@ -338,6 +353,10 @@ class ApplyActionsServiceTests(unittest.TestCase):
             )
             with Image.open(rotPath) as rotatedImage:
                 self.assertEqual(rotatedImage.size, (3, 2))
+            thumbsPath = Path(tempDir) / "thumbs"
+            thumbsPath.mkdir(parents=True, exist_ok=True)
+            staleThumbPath = thumbsPath / "rot-id.jpg"
+            staleThumbPath.write_bytes(b"stale-after-apply")
 
             undoResult = service.undoLastApply(
                 str(archiveRoot),
@@ -350,6 +369,7 @@ class ApplyActionsServiceTests(unittest.TestCase):
                 (archiveRoot / ".trash" / "duplicates" / "move.jpg").exists()
             )
             self.assertEqual(initialRotBytes, rotPath.read_bytes())
+            self.assertFalse(staleThumbPath.exists())
             self.assertEqual(undoResult["applied"], 2)
             self.assertEqual(len(undoResult["errors"]), 0)
             duplicateActions = repository.getDuplicateActions()

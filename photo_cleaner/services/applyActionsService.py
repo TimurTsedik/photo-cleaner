@@ -47,6 +47,9 @@ class ApplyActionsService:
             archiveRoot,
             in_duplicateTrashDir,
         )
+        reorientedTrashRoot = self._resolveReorientedTrashRoot(
+            archiveRoot,
+        )
         runId = self._buildRunId("apply")
         ret["runId"] = runId
 
@@ -71,6 +74,7 @@ class ApplyActionsService:
         orientationResult = self._applyOrientationActions(
             archiveRoot,
             backupRoot,
+            reorientedTrashRoot,
             in_dryRun,
             journalPath,
             runId,
@@ -87,6 +91,11 @@ class ApplyActionsService:
         if not in_dryRun:
             _ = self._repository.deletePhotosByIds(
                 duplicateResult.get("appliedPhotoIds", []),
+            )
+            self._invalidateWorkspaceThumbnails(
+                workspacePath,
+                duplicateResult.get("appliedPhotoIds", []) +
+                orientationResult.get("appliedPhotoIds", []),
             )
             self._markAppliedActions(
                 duplicateResult.get("appliedGroupKeys", []),
@@ -156,6 +165,7 @@ class ApplyActionsService:
             and str(record.get("runId")) == targetRunId
         ]
         runOperations.reverse()
+        affectedPhotoIds: list[str] = []
 
         for operationRecord in runOperations:
             ret["planned"] = int(ret["planned"]) + 1
@@ -175,6 +185,9 @@ class ApplyActionsService:
                     shutil.move(str(destinationPath), str(sourcePath))
                     print(f"undo moved duplicate: {destinationPath} -> {sourcePath}")
                     ret["applied"] = int(ret["applied"]) + 1
+                    photoId = str(operationRecord.get("photoId", "")).strip()
+                    if photoId:
+                        affectedPhotoIds.append(photoId)
                 except Exception as exception:
                     ret["skipped"] = int(ret["skipped"]) + 1
                     ret["errors"].append(f"failed to undo duplicate move: {exception}")
@@ -192,6 +205,9 @@ class ApplyActionsService:
                     shutil.copy2(backupPath, sourcePath)
                     print(f"undo rotated photo: {sourcePath} <- {backupPath}")
                     ret["applied"] = int(ret["applied"]) + 1
+                    photoId = str(operationRecord.get("photoId", "")).strip()
+                    if photoId:
+                        affectedPhotoIds.append(photoId)
                 except Exception as exception:
                     ret["skipped"] = int(ret["skipped"]) + 1
                     ret["errors"].append(f"failed to undo photo rotation: {exception}")
@@ -200,6 +216,10 @@ class ApplyActionsService:
                 ret["errors"].append(f"unknown operation type in journal: {operationType}")
 
         if not in_dryRun:
+            self._invalidateWorkspaceThumbnails(
+                workspacePath,
+                affectedPhotoIds,
+            )
             self._markConfirmedActionsAfterUndo(
                 runOperations,
                 undoRunId,
@@ -337,6 +357,7 @@ class ApplyActionsService:
         self,
         in_archiveRoot: Path,
         in_backupRoot: Path,
+        in_reorientedTrashRoot: Path,
         in_dryRun: bool,
         in_journalPath: Path,
         in_runId: str,
@@ -385,18 +406,24 @@ class ApplyActionsService:
                 continue
 
             backupPath = in_backupRoot / in_runId / relativePath
+            reorientedOriginalPath = self._buildUniqueDestinationPath(
+                in_reorientedTrashRoot / relativePath,
+            )
 
             if in_dryRun:
                 print(
                     "dry-run rotate photo: "
-                    f"path={sourcePath}, rotation={selectedRotation}, backup={backupPath}"
+                    f"path={sourcePath}, rotation={selectedRotation}, "
+                    f"backup={backupPath}, reorientedOriginal={reorientedOriginalPath}"
                 )
                 ret["applied"] = int(ret["applied"]) + 1
                 continue
 
             try:
                 backupPath.parent.mkdir(parents=True, exist_ok=True)
+                reorientedOriginalPath.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(sourcePath, backupPath)
+                shutil.copy2(sourcePath, reorientedOriginalPath)
                 self._rotateJpeg(sourcePath, selectedRotation)
                 self._appendJournalRecord(
                     in_journalPath,
@@ -407,6 +434,7 @@ class ApplyActionsService:
                         "photoId": photoId,
                         "sourcePath": str(sourcePath),
                         "backupPath": str(backupPath),
+                        "reorientedOriginalPath": str(reorientedOriginalPath),
                         "rotation": selectedRotation,
                         "at": self._utcNowIso(),
                     },
@@ -458,6 +486,13 @@ class ApplyActionsService:
         ret = duplicateTrashPath
         if not duplicateTrashPath.is_absolute():
             ret = in_archiveRoot / duplicateTrashPath
+        return ret
+
+    def _resolveReorientedTrashRoot(
+        self,
+        in_archiveRoot: Path,
+    ) -> Path:
+        ret = in_archiveRoot / ".photo-cleaner-trash" / "reoriented"
         return ret
 
     def _resolveJournalPath(
@@ -559,6 +594,28 @@ class ApplyActionsService:
                 ret = in_destinationPath.with_name(candidateName)
                 index += 1
         return ret
+
+    def _invalidateWorkspaceThumbnails(
+        self,
+        in_workspacePath: Path,
+        in_photoIds: list[str],
+    ) -> None:
+        thumbsPath = in_workspacePath / "thumbs"
+        uniquePhotoIds = sorted(
+            {
+                str(photoId).strip()
+                for photoId in in_photoIds
+                if str(photoId).strip()
+            }
+        )
+        for photoId in uniquePhotoIds:
+            thumbPath = thumbsPath / f"{photoId}.jpg"
+            if thumbPath.exists():
+                try:
+                    thumbPath.unlink()
+                    print(f"invalidated thumbnail: {thumbPath}")
+                except Exception as exception:
+                    print(f"failed to invalidate thumbnail {thumbPath}: {exception}")
 
     def _markAppliedActions(
         self,

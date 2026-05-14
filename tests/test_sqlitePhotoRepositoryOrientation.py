@@ -741,3 +741,56 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
 
             similarGroups = repository.getSimilarDuplicateGroups(set())
             self.assertEqual(similarGroups, [])
+
+    def test_getArchivePhotosPage_returnsOrderedPageAndTotal(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            connection = sqlite3.connect(dbPath)
+            try:
+                nowValue = 5000.0
+                baseRow = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": nowValue,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 100,
+                    "height": 80,
+                    "cameraModel": "Canon EOS 450D",
+                    "exifOrientation": 1,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": nowValue,
+                }
+
+                for index in range(45):
+                    row = dict(baseRow)
+                    row["id"] = f"photo-{index:03d}"
+                    row["relativePath"] = f"archive/img_{index:03d}.jpg"
+                    row["size"] = 1000 + index
+                    insertPhoto(connection, row)
+            finally:
+                connection.close()
+
+            pageOne = repository.getArchivePhotosPage(1, 20)
+            pageThree = repository.getArchivePhotosPage(3, 20)
+
+            self.assertEqual(pageOne["total"], 45)
+            self.assertEqual(pageOne["page"], 1)
+            self.assertEqual(pageOne["pageSize"], 20)
+            self.assertEqual(len(pageOne["items"]), 20)
+            self.assertEqual(pageOne["items"][0]["relativePath"], "archive/img_000.jpg")
+            self.assertEqual(pageOne["items"][-1]["relativePath"], "archive/img_019.jpg")
+
+            self.assertEqual(pageThree["total"], 45)
+            self.assertEqual(pageThree["page"], 3)
+            self.assertEqual(pageThree["pageSize"], 20)
+            self.assertEqual(len(pageThree["items"]), 5)
+            self.assertEqual(pageThree["items"][0]["relativePath"], "archive/img_040.jpg")
+            self.assertEqual(pageThree["items"][-1]["relativePath"], "archive/img_044.jpg")
