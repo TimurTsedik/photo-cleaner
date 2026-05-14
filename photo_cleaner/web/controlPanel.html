@@ -105,7 +105,8 @@
   <div class="card">
     <div class="sectionTitle">Команды</div>
     <div class="buttons">
-      <button id="fullRunButton" class="primaryAction" onclick="runCommand('full-run')">Запустить полный цикл: скан + дубликаты + ориентация</button>
+      <button id="fullRunButton" class="primaryAction" onclick="runCommand('full-run')">Запустить прогон: скан + дубликаты</button>
+      <button id="orientationRunButton" class="primaryAction" onclick="runCommand('orientation')" disabled>Найти кандидатов на неверную ориентацию фото</button>
       <button id="applyButton" class="primaryAction" onclick="runCommand('apply')" disabled>Выполнить все действия</button>
       <button id="undoApplyButton" class="dangerAction" onclick="runCommand('undo-last-apply')" disabled>Отменить последнее применение</button>
       <button id="clearDbButton" class="dangerAction" onclick="runDangerousCommand('clear-db', 'Удалить cleanup.db и actions.json? Это полностью очистит базу.')">Очистить базу (полностью)</button>

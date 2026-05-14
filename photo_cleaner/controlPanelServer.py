@@ -98,13 +98,11 @@ class ControlPanelState:
                     reportPath = self._operations.runBuildOrientationCandidatesReport()
                     reportUrl = f"/{reportPath}"
                 elif in_command == "full-run":
-                    print("full-run started: scan -> duplicates -> orientation")
+                    print("full-run started: scan -> duplicates")
                     self._operations.runScan()
                     print("full-run step completed: scan")
-                    _ = self._operations.runBuildDuplicatesReport()
+                    reportPath = self._operations.runBuildDuplicatesReport()
                     print("full-run step completed: duplicates")
-                    reportPath = self._operations.runBuildOrientationCandidatesReport()
-                    print("full-run step completed: orientation")
                     reportUrl = f"/{reportPath}"
                     print("full-run finished")
                 elif in_command == "apply":

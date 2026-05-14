@@ -1,5 +1,6 @@
 const logsNode = document.getElementById("logs");
 const fullRunButtonNode = document.getElementById("fullRunButton");
+const orientationRunButtonNode = document.getElementById("orientationRunButton");
 const applyButtonNode = document.getElementById("applyButton");
 const undoApplyButtonNode = document.getElementById("undoApplyButton");
 const clearDbButtonNode = document.getElementById("clearDbButton");
@@ -57,7 +58,13 @@ function updateCommandButtonsState() {
     }
 
     if (!hasCompletedFullRun) {
-      buttonNode.disabled = !isFullRunButton;
+      if (isFullRunButton) {
+        buttonNode.disabled = false;
+      } else if (orientationRunButtonNode !== null && buttonNode === orientationRunButtonNode) {
+        buttonNode.disabled = true;
+      } else {
+        buttonNode.disabled = true;
+      }
       continue;
     }
 
@@ -317,6 +324,8 @@ async function pollLogsUntilDone(command) {
         appendLogs(">>> opening report: " + payload.reportUrl);
         window.open(payload.reportUrl, "_blank");
       }
+      await refreshHeaderData();
+      await new Promise((resolve) => setTimeout(resolve, 250));
       await refreshHeaderData();
     } else {
       await new Promise((resolve) => setTimeout(resolve, 500));

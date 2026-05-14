@@ -85,6 +85,9 @@ class ApplyActionsService:
         ret["errors"] = list(duplicateResult["errors"]) + list(orientationResult["errors"])
 
         if not in_dryRun:
+            _ = self._repository.deletePhotosByIds(
+                duplicateResult.get("appliedPhotoIds", []),
+            )
             self._markAppliedActions(
                 duplicateResult.get("appliedGroupKeys", []),
                 orientationResult.get("appliedPhotoIds", []),
@@ -234,6 +237,7 @@ class ApplyActionsService:
             "skipped": 0,
             "errors": [],
             "appliedGroupKeys": [],
+            "appliedPhotoIds": [],
         }
 
         duplicateActions = self._repository.getDuplicateActions()
@@ -312,6 +316,7 @@ class ApplyActionsService:
                 )
                 print(f"moved duplicate: {sourcePath} -> {destinationPath}")
                 ret["applied"] = int(ret["applied"]) + 1
+                ret["appliedPhotoIds"].append(photoId)
                 previousAppliedCount = int(groupKeyToAppliedCount.get(groupKey, 0))
                 groupKeyToAppliedCount[groupKey] = previousAppliedCount + 1
             except Exception as exception:

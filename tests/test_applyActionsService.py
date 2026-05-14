@@ -114,6 +114,7 @@ class ApplyActionsServiceTests(unittest.TestCase):
             )
             self.assertEqual(applyResult["duplicateApplied"], 1)
             self.assertEqual(len(applyResult["errors"]), 0)
+            self.assertEqual(repository.getTotalPhotosCount(), 1)
             duplicateActions = repository.getDuplicateActions()
             self.assertEqual(
                 duplicateActions["exact:test"]["status"],

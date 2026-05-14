@@ -935,6 +935,38 @@ class SqlitePhotoRepository:
 
         return ret
 
+    def deletePhotosByIds(
+        self,
+        in_photoIds: list[str],
+    ) -> int:
+        ret = 0
+
+        photoIds = [
+            str(photoId).strip()
+            for photoId in in_photoIds
+            if str(photoId).strip()
+        ]
+        if not photoIds:
+            return ret
+
+        connection = sqlite3.connect(self._dbPath)
+        try:
+            cursor = connection.cursor()
+            placeholders = ", ".join("?" for _ in photoIds)
+            cursor.execute(
+                f"""
+                DELETE FROM photos
+                WHERE id IN ({placeholders})
+                """,
+                tuple(photoIds),
+            )
+            ret = int(cursor.rowcount or 0)
+            connection.commit()
+        finally:
+            connection.close()
+
+        return ret
+
     def _normalizeDuplicateStem(
         self,
         in_stem: str,
