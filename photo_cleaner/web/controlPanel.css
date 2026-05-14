@@ -81,6 +81,24 @@ button:hover {
   border-color: #444f71;
 }
 
+.primaryAction {
+  background: #25553f;
+  border-color: #2f7b5b;
+}
+
+.primaryAction:hover {
+  background: #2d6a4f;
+}
+
+.dangerAction {
+  background: #5a2a34;
+  border-color: #8f4452;
+}
+
+.dangerAction:hover {
+  background: #6b3140;
+}
+
 .metaLine {
   margin: 7px 0;
   color: #dbe3f6;

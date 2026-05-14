@@ -85,6 +85,11 @@ class ApplyActionsService:
         ret["errors"] = list(duplicateResult["errors"]) + list(orientationResult["errors"])
 
         if not in_dryRun:
+            self._markAppliedActions(
+                duplicateResult.get("appliedGroupKeys", []),
+                orientationResult.get("appliedPhotoIds", []),
+                runId,
+            )
             self._appendJournalRecord(
                 journalPath,
                 {
@@ -192,6 +197,10 @@ class ApplyActionsService:
                 ret["errors"].append(f"unknown operation type in journal: {operationType}")
 
         if not in_dryRun:
+            self._markConfirmedActionsAfterUndo(
+                runOperations,
+                undoRunId,
+            )
             self._appendJournalRecord(
                 journalPath,
                 {
@@ -224,11 +233,14 @@ class ApplyActionsService:
             "applied": 0,
             "skipped": 0,
             "errors": [],
+            "appliedGroupKeys": [],
         }
 
         duplicateActions = self._repository.getDuplicateActions()
         movePhotoIds: list[str] = []
-        for groupPayload in duplicateActions.values():
+        movePhotoIdToGroupKey: dict[str, str] = {}
+        groupKeyToMovePhotoIds: dict[str, list[str]] = {}
+        for groupKey, groupPayload in duplicateActions.items():
             statusValue = str(groupPayload.get("status", "")).strip().lower()
             if statusValue != "confirmed":
                 continue
@@ -245,12 +257,23 @@ class ApplyActionsService:
                 if photoIdStr == selectedKeepPhotoId:
                     continue
                 movePhotoIds.append(photoIdStr)
+                movePhotoIdToGroupKey[photoIdStr] = str(groupKey)
+                existingPhotoIds = groupKeyToMovePhotoIds.get(str(groupKey))
+                if existingPhotoIds is None:
+                    groupKeyToMovePhotoIds[str(groupKey)] = [photoIdStr]
+                else:
+                    existingPhotoIds.append(photoIdStr)
 
         uniqueMovePhotoIds = sorted(set(movePhotoIds))
         idToRelativePath = self._repository.getPhotoPathsByIds(uniqueMovePhotoIds)
+        groupKeyToAppliedCount: dict[str, int] = {}
+        groupKeyToTotalCount: dict[str, int] = {}
+        for groupKey, groupPhotoIds in groupKeyToMovePhotoIds.items():
+            groupKeyToTotalCount[groupKey] = len(set(groupPhotoIds))
 
         for photoId in uniqueMovePhotoIds:
             relativePath = idToRelativePath.get(photoId)
+            groupKey = movePhotoIdToGroupKey.get(photoId, "")
             if relativePath is None:
                 ret["skipped"] = int(ret["skipped"]) + 1
                 ret["errors"].append(f"duplicate photo id is missing in photos table: {photoId}")
@@ -280,6 +303,7 @@ class ApplyActionsService:
                         "recordType": "operation",
                         "runId": in_runId,
                         "operationType": "moveDuplicate",
+                        "groupKey": groupKey,
                         "photoId": photoId,
                         "sourcePath": str(sourcePath),
                         "destinationPath": str(destinationPath),
@@ -288,12 +312,20 @@ class ApplyActionsService:
                 )
                 print(f"moved duplicate: {sourcePath} -> {destinationPath}")
                 ret["applied"] = int(ret["applied"]) + 1
+                previousAppliedCount = int(groupKeyToAppliedCount.get(groupKey, 0))
+                groupKeyToAppliedCount[groupKey] = previousAppliedCount + 1
             except Exception as exception:
                 ret["skipped"] = int(ret["skipped"]) + 1
                 ret["errors"].append(
                     f"failed to move duplicate {relativePath}: {exception}"
                 )
 
+        appliedGroupKeys: list[str] = []
+        for groupKey, totalCount in groupKeyToTotalCount.items():
+            appliedCount = int(groupKeyToAppliedCount.get(groupKey, 0))
+            if totalCount > 0 and appliedCount == totalCount:
+                appliedGroupKeys.append(groupKey)
+        ret["appliedGroupKeys"] = appliedGroupKeys
         return ret
 
     def _applyOrientationActions(
@@ -309,6 +341,7 @@ class ApplyActionsService:
             "applied": 0,
             "skipped": 0,
             "errors": [],
+            "appliedPhotoIds": [],
         }
 
         orientationActions = self._repository.getOrientationActions()
@@ -327,6 +360,7 @@ class ApplyActionsService:
                 continue
 
             relativePath = str(actionPayload.get("relativePath", "")).strip()
+            photoId = str(actionPayload.get("photoId", "")).strip()
             if not relativePath:
                 ret["skipped"] = int(ret["skipped"]) + 1
                 ret["errors"].append("orientation action does not have relativePath")
@@ -365,6 +399,7 @@ class ApplyActionsService:
                         "recordType": "operation",
                         "runId": in_runId,
                         "operationType": "rotatePhoto",
+                        "photoId": photoId,
                         "sourcePath": str(sourcePath),
                         "backupPath": str(backupPath),
                         "rotation": selectedRotation,
@@ -376,6 +411,8 @@ class ApplyActionsService:
                     f"path={sourcePath}, rotation={selectedRotation}"
                 )
                 ret["applied"] = int(ret["applied"]) + 1
+                if photoId:
+                    ret["appliedPhotoIds"].append(photoId)
             except Exception as exception:
                 ret["skipped"] = int(ret["skipped"]) + 1
                 ret["errors"].append(
@@ -517,3 +554,75 @@ class ApplyActionsService:
                 ret = in_destinationPath.with_name(candidateName)
                 index += 1
         return ret
+
+    def _markAppliedActions(
+        self,
+        in_duplicateGroupKeys: list[str],
+        in_orientationPhotoIds: list[str],
+        in_runId: str,
+    ) -> None:
+        appliedAt = self._utcNowIso()
+        duplicateActions = self._repository.getDuplicateActions()
+        for groupKey in set(in_duplicateGroupKeys):
+            existingPayload = duplicateActions.get(str(groupKey))
+            if not isinstance(existingPayload, dict):
+                continue
+            payloadToSave = dict(existingPayload)
+            payloadToSave["status"] = "applied"
+            payloadToSave["lastAppliedRunId"] = in_runId
+            payloadToSave["lastAppliedAt"] = appliedAt
+            self._repository.upsertDuplicateAction(str(groupKey), payloadToSave)
+
+        orientationActions = self._repository.getOrientationActions()
+        for photoId in set(in_orientationPhotoIds):
+            existingPayload = orientationActions.get(str(photoId))
+            if not isinstance(existingPayload, dict):
+                continue
+            payloadToSave = dict(existingPayload)
+            payloadToSave["status"] = "applied"
+            payloadToSave["lastAppliedRunId"] = in_runId
+            payloadToSave["lastAppliedAt"] = appliedAt
+            self._repository.upsertOrientationAction(str(photoId), payloadToSave)
+
+    def _markConfirmedActionsAfterUndo(
+        self,
+        in_runOperations: list[dict[str, Any]],
+        in_undoRunId: str,
+    ) -> None:
+        duplicateGroupKeys: set[str] = set()
+        orientationPhotoIds: set[str] = set()
+
+        for operationRecord in in_runOperations:
+            operationType = str(operationRecord.get("operationType", "")).strip()
+            if operationType == "moveDuplicate":
+                groupKey = str(operationRecord.get("groupKey", "")).strip()
+                if groupKey:
+                    duplicateGroupKeys.add(groupKey)
+            elif operationType == "rotatePhoto":
+                photoId = str(operationRecord.get("photoId", "")).strip()
+                if photoId:
+                    orientationPhotoIds.add(photoId)
+
+        duplicateActions = self._repository.getDuplicateActions()
+        for groupKey in duplicateGroupKeys:
+            existingPayload = duplicateActions.get(groupKey)
+            if not isinstance(existingPayload, dict):
+                continue
+            payloadToSave = dict(existingPayload)
+            payloadToSave["status"] = "confirmed"
+            payloadToSave["lastUndoRunId"] = in_undoRunId
+            payloadToSave["lastUndoAt"] = self._utcNowIso()
+            self._repository.upsertDuplicateAction(groupKey, payloadToSave)
+
+        orientationActions = self._repository.getOrientationActions()
+        for photoId, existingPayload in orientationActions.items():
+            if not isinstance(existingPayload, dict):
+                continue
+            payloadPhotoId = str(existingPayload.get("photoId", "")).strip()
+            keyPhotoId = str(photoId).strip()
+            if payloadPhotoId in orientationPhotoIds or keyPhotoId in orientationPhotoIds:
+                payloadToSave = dict(existingPayload)
+                payloadToSave["status"] = "confirmed"
+                payloadToSave["lastUndoRunId"] = in_undoRunId
+                payloadToSave["lastUndoAt"] = self._utcNowIso()
+                self._repository.upsertOrientationAction(str(photoId), payloadToSave)

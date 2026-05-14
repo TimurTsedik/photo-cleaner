@@ -96,6 +96,12 @@ class ControlPanelState:
                 elif in_command == "orientation":
                     reportPath = self._operations.runBuildOrientationCandidatesReport()
                     reportUrl = f"/{reportPath}"
+                elif in_command == "apply":
+                    self._operations.runApply(False)
+                elif in_command == "undo-last-apply":
+                    self._operations.runUndoLastApply(False)
+                elif in_command == "clear-db":
+                    self._clearDatabase()
                 else:
                     raise ValueError(f"unknown command: {in_command}")
             success = True
@@ -110,6 +116,23 @@ class ControlPanelState:
                 self._reportUrl = reportUrl
                 self._finished = True
                 self._running = False
+
+    def _clearDatabase(
+        self,
+    ) -> None:
+        dbPath = self._workspacePath / "cleanup.db"
+        actionsPath = self._workspacePath / "actions.json"
+        if dbPath.exists():
+            dbPath.unlink()
+            print(f"clear-db: removed {dbPath}")
+        else:
+            print(f"clear-db: db file not found: {dbPath}")
+        if actionsPath.exists():
+            actionsPath.unlink()
+            print(f"clear-db: removed {actionsPath}")
+        else:
+            print(f"clear-db: actions file not found: {actionsPath}")
+        print("clear-db finished")
 
     def runCommand(
         self,
@@ -257,8 +280,8 @@ class ControlPanelState:
         duplicateConfirmedCount = 0
         duplicatePendingCount = 0
         for item in duplicateActions.values():
-            statusValue = str(item.get("status", "pending"))
-            if statusValue == "confirmed":
+            statusValue = str(item.get("status", "pending")).strip().lower()
+            if statusValue in {"confirmed", "applied"}:
                 duplicateConfirmedCount += 1
             else:
                 duplicatePendingCount += 1

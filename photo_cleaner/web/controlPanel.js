@@ -274,6 +274,14 @@ async function runCommand(command) {
   }
 }
 
+function runDangerousCommand(command, confirmMessage) {
+  const confirmText = String(confirmMessage || "Подтвердите выполнение опасной команды.");
+  if (!window.confirm(confirmText)) {
+    return;
+  }
+  runCommand(command);
+}
+
 async function pollLogsUntilDone() {
   let done = false;
   while (!done) {

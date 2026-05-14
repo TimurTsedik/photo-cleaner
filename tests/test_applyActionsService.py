@@ -114,6 +114,11 @@ class ApplyActionsServiceTests(unittest.TestCase):
             )
             self.assertEqual(applyResult["duplicateApplied"], 1)
             self.assertEqual(len(applyResult["errors"]), 0)
+            duplicateActions = repository.getDuplicateActions()
+            self.assertEqual(
+                duplicateActions["exact:test"]["status"],
+                "applied",
+            )
 
     def test_apply_rotatesConfirmedOrientationPhoto(
         self,
@@ -175,6 +180,11 @@ class ApplyActionsServiceTests(unittest.TestCase):
                 self.assertEqual(rotatedImage.size, (3, 2))
             self.assertEqual(applyResult["orientationApplied"], 1)
             self.assertEqual(len(applyResult["errors"]), 0)
+            orientationActions = repository.getOrientationActions()
+            self.assertEqual(
+                orientationActions["rot-id"]["status"],
+                "applied",
+            )
 
     def test_apply_dryRun_doesNotModifyFiles(
         self,
@@ -235,6 +245,11 @@ class ApplyActionsServiceTests(unittest.TestCase):
 
             self.assertEqual(initialBytes, imagePath.read_bytes())
             self.assertEqual(applyResult["orientationApplied"], 1)
+            orientationActions = repository.getOrientationActions()
+            self.assertEqual(
+                orientationActions["dry-id"]["status"],
+                "confirmed",
+            )
 
     def test_undoLastApply_restoresMovedAndRotatedFiles(
         self,
@@ -336,3 +351,13 @@ class ApplyActionsServiceTests(unittest.TestCase):
             self.assertEqual(initialRotBytes, rotPath.read_bytes())
             self.assertEqual(undoResult["applied"], 2)
             self.assertEqual(len(undoResult["errors"]), 0)
+            duplicateActions = repository.getDuplicateActions()
+            orientationActions = repository.getOrientationActions()
+            self.assertEqual(
+                duplicateActions["exact:test"]["status"],
+                "confirmed",
+            )
+            self.assertEqual(
+                orientationActions["rot-id"]["status"],
+                "confirmed",
+            )

@@ -106,11 +106,11 @@
       <input type="text" id="cfgArchiveRoot">
     </div>
     <div class="field">
-      <div class="metaLine">Trusted камеры (по одной в строке)</div>
+      <div class="metaLine">Trusted камеры (по одной в строке) Это камеры, для которых мы не проверяем ориентацию фотографий.</div>
       <textarea id="cfgTrustedCameras" rows="5"></textarea>
     </div>
     <div class="field">
-      <div class="metaLine">Исключаемые папки (`orientation.excludedPathPrefixes`, по одной в строке)</div>
+      <div class="metaLine">Исключаемые папки (`orientation.excludedPathPrefixes`, по одной в строке) Это папки, в которых мы не проверяем ориентацию фотографий.</div>
       <textarea id="cfgExcludedPrefixes" rows="5"></textarea>
     </div>
     <div class="buttons">
@@ -125,6 +125,9 @@
       <button onclick="runCommand('scan')">Скан</button>
       <button onclick="runCommand('duplicates')">Собрать дубликаты</button>
       <button onclick="runCommand('orientation')">Найти кандидатов на неверную ориентацию фото</button>
+      <button class="primaryAction" onclick="runCommand('apply')">Выполнить все действия</button>
+      <button class="dangerAction" onclick="runCommand('undo-last-apply')">Отменить последнее применение</button>
+      <button class="dangerAction" onclick="runDangerousCommand('clear-db', 'Удалить cleanup.db и actions.json? Это полностью очистит базу.')">Очистить базу (полностью)</button>
       <button class="secondary" onclick="openReport('/reports/duplicates')">Открыть отчет дубликатов</button>
       <button class="secondary" onclick="openReport('/reports/orientation')">Открыть отчет ориентации</button>
     </div>
