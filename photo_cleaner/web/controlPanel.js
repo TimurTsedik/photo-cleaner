@@ -36,6 +36,7 @@ const manualBadgeNode = document.getElementById("manualBadge");
 let isRunning = false;
 let logOffset = 0;
 let hasCompletedFullRun = false;
+let pendingReportWindow = null;
 
 function updateCommandButtonsState() {
   const allButtons = Array.from(document.querySelectorAll("button"));
@@ -79,6 +80,24 @@ function appendLogs(text) {
 
 function openReport(url) {
   window.open(url, "_blank");
+}
+
+function commandHasAutoReport(command) {
+  const ret = command === "full-run" || command === "duplicates" || command === "orientation";
+  return ret;
+}
+
+function preparePendingReportWindow(command) {
+  let ret = null;
+  if (!commandHasAutoReport(command)) {
+    return ret;
+  }
+  ret = window.open("about:blank", "_blank");
+  if (ret && !ret.closed) {
+    ret.document.title = "Photo Cleaner report";
+    ret.document.body.innerHTML = "<p style='font-family: sans-serif; padding: 16px;'>Подготавливаем отчет...</p>";
+  }
+  return ret;
 }
 
 function renderSimpleList(listNode, values) {
@@ -270,15 +289,25 @@ async function runCommand(command) {
     appendLogs("Команда уже выполняется, дождитесь завершения.");
     return;
   }
+  let options = {};
+  if (command === "apply") {
+    const applyOptions = await buildApplyOptionsOrCancel();
+    if (applyOptions === null) {
+      appendLogs(">>> отменено: apply");
+      return;
+    }
+    options = applyOptions;
+  }
   isRunning = true;
   updateCommandButtonsState();
   logOffset = 0;
+  pendingReportWindow = preparePendingReportWindow(command);
   appendLogs(">>> start: " + command);
   try {
     const response = await fetch("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify({ command, options }),
     });
     const payload = await response.json();
     if (!payload.started) {
@@ -290,9 +319,60 @@ async function runCommand(command) {
     appendLogs("Ошибка: " + String(error));
   } finally {
     appendLogs(">>> done: " + command);
+    pendingReportWindow = null;
     isRunning = false;
     updateCommandButtonsState();
   }
+}
+
+async function buildApplyOptionsOrCancel() {
+  let ret = {
+    applyPendingDuplicates: false,
+    applyPendingOrientation: false,
+  };
+
+  let summaryPayload = null;
+  try {
+    const summaryUrl = "/api/summary?ts=" + String(Date.now());
+    const response = await fetch(summaryUrl, {
+      method: "GET",
+      cache: "no-store",
+    });
+    summaryPayload = await response.json();
+  } catch (error) {
+    appendLogs("Не удалось прочитать summary перед apply: " + String(error));
+    ret = null;
+    return ret;
+  }
+
+  const duplicatePendingCount = Number(summaryPayload.duplicatePendingCount || 0);
+  const orientationPendingCount = Number(summaryPayload.orientationPendingCount || 0);
+
+  if (duplicatePendingCount > 0) {
+    const confirmedDuplicates = window.confirm(
+      "Есть неподтвержденные дубли: " + String(duplicatePendingCount) + ".\n\n" +
+      "Согласны, что при apply будут обработаны ВСЕ дубли, включая неподтвержденные?"
+    );
+    if (!confirmedDuplicates) {
+      ret = null;
+      return ret;
+    }
+    ret.applyPendingDuplicates = true;
+  }
+
+  if (orientationPendingCount > 0) {
+    const confirmedOrientation = window.confirm(
+      "Есть неподтвержденные кандидаты ориентации: " + String(orientationPendingCount) + ".\n\n" +
+      "Согласны, что при apply для неподтвержденных будет применено решение машины (suggested)?"
+    );
+    if (!confirmedOrientation) {
+      ret = null;
+      return ret;
+    }
+    ret.applyPendingOrientation = true;
+  }
+
+  return ret;
 }
 
 function runDangerousCommand(command, confirmMessage) {
@@ -322,7 +402,11 @@ async function pollLogsUntilDone(command) {
       }
       if (payload.reportUrl) {
         appendLogs(">>> opening report: " + payload.reportUrl);
-        window.open(payload.reportUrl, "_blank");
+        if (pendingReportWindow && !pendingReportWindow.closed) {
+          pendingReportWindow.location.href = payload.reportUrl;
+        } else {
+          window.open(payload.reportUrl, "_blank");
+        }
       }
       await refreshHeaderData();
       await new Promise((resolve) => setTimeout(resolve, 250));

@@ -76,6 +76,35 @@ def pathMatchesExcludedPrefix(
     return ret
 
 
+def pathInsidePhotoCleanerTrash(
+    in_candidatePath: Path,
+    in_archiveRoot: Path,
+) -> bool:
+    ret = False
+
+    try:
+        resolvedCandidate = in_candidatePath.resolve()
+    except OSError:
+        resolvedCandidate = in_candidatePath
+
+    try:
+        resolvedArchiveRoot = in_archiveRoot.resolve()
+    except OSError:
+        resolvedArchiveRoot = in_archiveRoot
+
+    try:
+        relativeCandidate = resolvedCandidate.relative_to(resolvedArchiveRoot)
+        normalizedParts = [
+            str(part).strip().lower()
+            for part in relativeCandidate.parts
+        ]
+        ret = ".photo-cleaner-trash" in normalizedParts
+    except ValueError:
+        ret = False
+
+    return ret
+
+
 class FileSystemScanner:
     def __init__(
         self,
@@ -144,6 +173,10 @@ class FileSystemScanner:
             dirnames[:] = [
                 dirnameValue
                 for dirnameValue in dirnames
+                if not pathInsidePhotoCleanerTrash(
+                    Path(currentRoot) / dirnameValue,
+                    rootPath,
+                )
                 if not pathMatchesExcludedPrefix(
                     Path(currentRoot) / dirnameValue,
                     rootPath,
@@ -167,6 +200,12 @@ class FileSystemScanner:
                     continue
 
                 fullPath = Path(currentRoot) / fileName
+
+                if pathInsidePhotoCleanerTrash(
+                    fullPath,
+                    rootPath,
+                ):
+                    continue
 
                 if pathMatchesExcludedPrefix(
                     fullPath,

@@ -301,6 +301,8 @@ class PhotoCleanerOperations:
     def runApply(
         self,
         in_dryRun: bool,
+        in_applyPendingDuplicates: bool = False,
+        in_applyPendingOrientation: bool = False,
     ) -> dict:
         config = self._loadConfig()
         repository = self._buildRepository(config)
@@ -316,6 +318,8 @@ class PhotoCleanerOperations:
             config["workspace"]["path"],
             trashDir,
             in_dryRun,
+            in_applyPendingDuplicates,
+            in_applyPendingOrientation,
         )
         print(
             "apply finished: "

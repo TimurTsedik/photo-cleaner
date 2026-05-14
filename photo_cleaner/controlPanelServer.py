@@ -57,6 +57,7 @@ class ControlPanelState:
         self._actionsFileStore = ActionsFileStore()
         self._thumbnailGenerator = ThumbnailGenerator()
         self._lock = Lock()
+        self._dbLock = Lock()
         self._running = False
         self._logBuffer = io.StringIO()
         self._success = False
@@ -85,9 +86,11 @@ class ControlPanelState:
     def _executeCommand(
         self,
         in_command: str,
+        in_options: dict | None = None,
     ) -> None:
         reportUrl = None
         success = False
+        options = in_options or {}
 
         captureBuffer = _LiveLogWriter(self._appendLogs)
 
@@ -110,7 +113,13 @@ class ControlPanelState:
                     reportUrl = f"/{reportPath}"
                     print("full-run finished")
                 elif in_command == "apply":
-                    self._operations.runApply(False)
+                    applyPendingDuplicates = bool(options.get("applyPendingDuplicates", False))
+                    applyPendingOrientation = bool(options.get("applyPendingOrientation", False))
+                    self._operations.runApply(
+                        False,
+                        applyPendingDuplicates,
+                        applyPendingOrientation,
+                    )
                 elif in_command == "undo-last-apply":
                     self._operations.runUndoLastApply(False)
                 elif in_command == "clear-db":
@@ -133,23 +142,30 @@ class ControlPanelState:
     def _clearDatabase(
         self,
     ) -> None:
-        dbPath = self._workspacePath / "cleanup.db"
-        actionsPath = self._workspacePath / "actions.json"
-        if dbPath.exists():
-            dbPath.unlink()
-            print(f"clear-db: removed {dbPath}")
-        else:
-            print(f"clear-db: db file not found: {dbPath}")
-        if actionsPath.exists():
-            actionsPath.unlink()
-            print(f"clear-db: removed {actionsPath}")
-        else:
-            print(f"clear-db: actions file not found: {actionsPath}")
-        print("clear-db finished")
+        with self._dbLock:
+            dbPath = self._workspacePath / "cleanup.db"
+            actionsPath = self._workspacePath / "actions.json"
+            if dbPath.exists():
+                dbPath.unlink()
+                print(f"clear-db: removed {dbPath}")
+            else:
+                print(f"clear-db: db file not found: {dbPath}")
+            if actionsPath.exists():
+                actionsPath.unlink()
+                print(f"clear-db: removed {actionsPath}")
+            else:
+                print(f"clear-db: actions file not found: {actionsPath}")
+
+            # Recreate empty database with required tables
+            repository = SqlitePhotoRepository(str(dbPath))
+            repository.initialize()
+            print(f"clear-db: recreated empty database {dbPath}")
+            print("clear-db finished")
 
     def runCommand(
         self,
         in_command: str,
+        in_options: dict | None = None,
     ) -> dict:
         ret: dict
         workerThread = None
@@ -171,7 +187,7 @@ class ControlPanelState:
             self._logBuffer = io.StringIO()
             workerThread = Thread(
                 target=self._executeCommand,
-                args=(in_command,),
+                args=(in_command, in_options),
                 daemon=True,
             )
 
@@ -349,112 +365,113 @@ class ControlPanelState:
     def getSummary(
         self,
     ) -> dict:
-        repository = SqlitePhotoRepository(str(self._workspacePath / "cleanup.db"))
-        repository.initialize()
+        with self._dbLock:
+            repository = SqlitePhotoRepository(str(self._workspacePath / "cleanup.db"))
+            repository.initialize()
 
-        orientationBlock = self._config.get("orientation", {})
-        excludedPathPrefixes = list(orientationBlock.get("excludedPathPrefixes", []))
-        trustedCameraModels = list(orientationBlock.get("trustedCameraModels", []))
-        trustedCameraModelsNormalized = {
-            str(cameraModel).replace("\x00", "").strip().lower()
-            for cameraModel in trustedCameraModels
-            if str(cameraModel).strip()
-        }
+            orientationBlock = self._config.get("orientation", {})
+            excludedPathPrefixes = list(orientationBlock.get("excludedPathPrefixes", []))
+            trustedCameraModels = list(orientationBlock.get("trustedCameraModels", []))
+            trustedCameraModelsNormalized = {
+                str(cameraModel).replace("\x00", "").strip().lower()
+                for cameraModel in trustedCameraModels
+                if str(cameraModel).strip()
+            }
 
-        usedCameraModelCounts = repository.getCameraModelCounts()
-        trustedFilesCount = 0
-        untrustedFilesCount = 0
-        for item in usedCameraModelCounts:
-            cameraModel = str(item.get("cameraModel") or "")
-            countValue = int(item.get("count") or 0)
-            cameraModelNormalized = cameraModel.replace("\x00", "").strip().lower()
-            if cameraModelNormalized in trustedCameraModelsNormalized:
-                trustedFilesCount += countValue
-            else:
-                untrustedFilesCount += countValue
+            usedCameraModelCounts = repository.getCameraModelCounts()
+            trustedFilesCount = 0
+            untrustedFilesCount = 0
+            for item in usedCameraModelCounts:
+                cameraModel = str(item.get("cameraModel") or "")
+                countValue = int(item.get("count") or 0)
+                cameraModelNormalized = cameraModel.replace("\x00", "").strip().lower()
+                if cameraModelNormalized in trustedCameraModelsNormalized:
+                    trustedFilesCount += countValue
+                else:
+                    untrustedFilesCount += countValue
 
-        duplicateCandidateIds = repository.getDuplicateCandidatePhotoIds()
-        exactDuplicateGroups = repository.getSha256DuplicateGroups()
-        similarDuplicateGroups = repository.getSimilarDuplicateGroups(duplicateCandidateIds)
+            duplicateCandidateIds = repository.getDuplicateCandidatePhotoIds()
+            exactDuplicateGroups = repository.getSha256DuplicateGroups()
+            similarDuplicateGroups = repository.getSimilarDuplicateGroups(duplicateCandidateIds)
 
-        exactDuplicateFilesCount = 0
-        for group in exactDuplicateGroups:
-            exactDuplicateFilesCount += len(group)
+            exactDuplicateFilesCount = 0
+            for group in exactDuplicateGroups:
+                exactDuplicateFilesCount += len(group)
 
-        similarDuplicateFilesCount = 0
-        for group in similarDuplicateGroups:
-            similarDuplicateFilesCount += len(group)
+            similarDuplicateFilesCount = 0
+            for group in similarDuplicateGroups:
+                similarDuplicateFilesCount += len(group)
 
-        orientationCandidates = repository.getOrientationCandidatesForFaceDetection(
-            orientationBlock.get("candidateExtensions", []),
-            orientationBlock.get("neverRotateExtensions", []),
-            trustedCameraModels,
-            set(),
-        )
+            orientationCandidates = repository.getOrientationCandidatesForFaceDetection(
+                orientationBlock.get("candidateExtensions", []),
+                orientationBlock.get("neverRotateExtensions", []),
+                trustedCameraModels,
+                set(),
+            )
 
-        actionsPayload = repository.buildActionsPayloadFromDb()
-        orientationActions = actionsPayload.get("orientation", {}).get("items", {})
-        duplicateActions = actionsPayload.get("duplicates", {}).get("groups", {})
+            actionsPayload = repository.buildActionsPayloadFromDb()
+            orientationActions = actionsPayload.get("orientation", {}).get("items", {})
+            duplicateActions = actionsPayload.get("duplicates", {}).get("groups", {})
 
-        orientationAutoCount = 0
-        orientationManualCount = 0
-        for item in orientationActions.values():
-            suggestedAction = str(item.get("suggestedAction", "manual_review"))
-            if suggestedAction == "manual_review":
-                orientationManualCount += 1
-            else:
-                orientationAutoCount += 1
+            orientationAutoCount = 0
+            orientationManualCount = 0
+            for item in orientationActions.values():
+                suggestedAction = str(item.get("suggestedAction", "manual_review"))
+                if suggestedAction == "manual_review":
+                    orientationManualCount += 1
+                else:
+                    orientationAutoCount += 1
 
-        orientationResolvedCount = 0
-        orientationPendingCount = 0
-        for item in orientationActions.values():
-            statusValue = str(item.get("status", "pending"))
-            if statusValue == "pending":
-                orientationPendingCount += 1
-            else:
-                orientationResolvedCount += 1
+            orientationResolvedCount = 0
+            orientationPendingCount = 0
+            for item in orientationActions.values():
+                statusValue = str(item.get("status", "pending"))
+                if statusValue == "pending":
+                    orientationPendingCount += 1
+                else:
+                    orientationResolvedCount += 1
 
-        duplicateConfirmedCount = 0
-        duplicatePendingCount = 0
-        for item in duplicateActions.values():
-            statusValue = str(item.get("status", "pending")).strip().lower()
-            if statusValue in {"confirmed", "applied"}:
-                duplicateConfirmedCount += 1
-            else:
-                duplicatePendingCount += 1
+            duplicateConfirmedCount = 0
+            duplicatePendingCount = 0
+            for item in duplicateActions.values():
+                statusValue = str(item.get("status", "pending")).strip().lower()
+                if statusValue in {"confirmed", "applied"}:
+                    duplicateConfirmedCount += 1
+                else:
+                    duplicatePendingCount += 1
 
-        dbPath = self._workspacePath / "cleanup.db"
-        dbSizeBytes = 0
-        dbUpdatedAt = "-"
-        if dbPath.exists():
-            dbSizeBytes = int(dbPath.stat().st_size)
-            dbUpdatedAt = datetime.fromtimestamp(dbPath.stat().st_mtime).isoformat(sep=" ", timespec="seconds")
+            dbPath = self._workspacePath / "cleanup.db"
+            dbSizeBytes = 0
+            dbUpdatedAt = "-"
+            if dbPath.exists():
+                dbSizeBytes = int(dbPath.stat().st_size)
+                dbUpdatedAt = datetime.fromtimestamp(dbPath.stat().st_mtime).isoformat(sep=" ", timespec="seconds")
 
-        ret = {
-            "archiveRoot": str(self._config.get("archive", {}).get("root", "")),
-            "workspacePath": str(self._workspacePath),
-            "excludedPathPrefixes": excludedPathPrefixes,
-            "trustedCameraModels": trustedCameraModels,
-            "totalFiles": repository.getTotalPhotosCount(),
-            "extensionCounts": repository.getExtensionCounts(),
-            "usedCameraModelCounts": usedCameraModelCounts,
-            "dbSizeBytes": dbSizeBytes,
-            "dbUpdatedAt": dbUpdatedAt,
-            "exactDuplicateGroupsCount": len(exactDuplicateGroups),
-            "exactDuplicateFilesCount": exactDuplicateFilesCount,
-            "similarDuplicateGroupsCount": len(similarDuplicateGroups),
-            "similarDuplicateFilesCount": similarDuplicateFilesCount,
-            "orientationCandidatesCount": len(orientationCandidates),
-            "orientationSuggestedAutoCount": orientationAutoCount,
-            "orientationSuggestedManualCount": orientationManualCount,
-            "duplicateConfirmedCount": duplicateConfirmedCount,
-            "duplicatePendingCount": duplicatePendingCount,
-            "orientationResolvedCount": orientationResolvedCount,
-            "orientationPendingCount": orientationPendingCount,
-            "trustedFilesCount": trustedFilesCount,
-            "untrustedFilesCount": untrustedFilesCount,
-        }
-        return ret
+            ret = {
+                "archiveRoot": str(self._config.get("archive", {}).get("root", "")),
+                "workspacePath": str(self._workspacePath),
+                "excludedPathPrefixes": excludedPathPrefixes,
+                "trustedCameraModels": trustedCameraModels,
+                "totalFiles": repository.getTotalPhotosCount(),
+                "extensionCounts": repository.getExtensionCounts(),
+                "usedCameraModelCounts": usedCameraModelCounts,
+                "dbSizeBytes": dbSizeBytes,
+                "dbUpdatedAt": dbUpdatedAt,
+                "exactDuplicateGroupsCount": len(exactDuplicateGroups),
+                "exactDuplicateFilesCount": exactDuplicateFilesCount,
+                "similarDuplicateGroupsCount": len(similarDuplicateGroups),
+                "similarDuplicateFilesCount": similarDuplicateFilesCount,
+                "orientationCandidatesCount": len(orientationCandidates),
+                "orientationSuggestedAutoCount": orientationAutoCount,
+                "orientationSuggestedManualCount": orientationManualCount,
+                "duplicateConfirmedCount": duplicateConfirmedCount,
+                "duplicatePendingCount": duplicatePendingCount,
+                "orientationResolvedCount": orientationResolvedCount,
+                "orientationPendingCount": orientationPendingCount,
+                "trustedFilesCount": trustedFilesCount,
+                "untrustedFilesCount": untrustedFilesCount,
+            }
+            return ret
 
     def getEditableConfig(
         self,
@@ -718,7 +735,13 @@ class _RunCommandResource:
         if not isinstance(payload, dict):
             payload = {}
         commandName = str(payload.get("command", "")).strip()
-        out_resp.media = self._state.runCommand(commandName)
+        optionsPayload = payload.get("options", {})
+        if not isinstance(optionsPayload, dict):
+            optionsPayload = {}
+        out_resp.media = self._state.runCommand(
+            commandName,
+            optionsPayload,
+        )
 
 
 class _StatusResource:

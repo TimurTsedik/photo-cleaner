@@ -382,3 +382,136 @@ class ApplyActionsServiceTests(unittest.TestCase):
                 orientationActions["rot-id"]["status"],
                 "confirmed",
             )
+
+    def test_apply_pendingDuplicatesWithConsent_usesRecommendedKeep(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            archiveRoot = Path(tempDir) / "archive"
+            archiveRoot.mkdir(parents=True, exist_ok=True)
+            keepPath = archiveRoot / "keep.jpg"
+            movePath = archiveRoot / "move.jpg"
+            keepPath.write_bytes(b"keep")
+            movePath.write_bytes(b"move")
+
+            dbPath = Path(tempDir) / "cleanup.db"
+            repository = SqlitePhotoRepository(str(dbPath))
+            repository.initialize()
+            connection = sqlite3.connect(str(dbPath))
+            try:
+                rowBase = {
+                    "extension": ".jpg",
+                    "size": 10,
+                    "mtime": 1.0,
+                    "sha256": None,
+                    "partialSha256": None,
+                    "width": 1,
+                    "height": 1,
+                    "cameraModel": "Canon EOS 5D Mark II",
+                    "exifOrientation": None,
+                    "isRaw": 0,
+                    "isJpeg": 1,
+                    "thumbnailPath": None,
+                    "createdAt": 1.0,
+                }
+                keepRow = dict(rowBase)
+                keepRow["id"] = "keep-id"
+                keepRow["relativePath"] = "keep.jpg"
+                insertPhoto(connection, keepRow)
+
+                moveRow = dict(rowBase)
+                moveRow["id"] = "move-id"
+                moveRow["relativePath"] = "move.jpg"
+                insertPhoto(connection, moveRow)
+            finally:
+                connection.close()
+
+            repository.upsertDuplicateAction(
+                "exact:test",
+                {
+                    "groupKey": "exact:test",
+                    "status": "pending",
+                    "selectedKeepPhotoId": "",
+                    "recommendedKeepPhotoId": "keep-id",
+                    "photoIds": ["keep-id", "move-id"],
+                },
+            )
+
+            service = ApplyActionsService(repository)
+            applyResult = service.apply(
+                str(archiveRoot),
+                tempDir,
+                ".trash/duplicates",
+                False,
+                True,
+                False,
+            )
+
+            self.assertTrue(keepPath.exists())
+            self.assertFalse(movePath.exists())
+            self.assertEqual(applyResult["duplicateApplied"], 1)
+            self.assertEqual(len(applyResult["errors"]), 0)
+
+    def test_apply_pendingOrientationWithConsent_usesSuggestedRotation(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            archiveRoot = Path(tempDir) / "archive"
+            archiveRoot.mkdir(parents=True, exist_ok=True)
+            imagePath = archiveRoot / "rot.jpg"
+            image = Image.new("RGB", (2, 3), color=(255, 0, 0))
+            image.save(imagePath, "JPEG")
+
+            dbPath = Path(tempDir) / "cleanup.db"
+            repository = SqlitePhotoRepository(str(dbPath))
+            repository.initialize()
+            connection = sqlite3.connect(str(dbPath))
+            try:
+                insertPhoto(
+                    connection,
+                    {
+                        "id": "rot-id",
+                        "relativePath": "rot.jpg",
+                        "extension": ".jpg",
+                        "size": 10,
+                        "mtime": 1.0,
+                        "sha256": None,
+                        "partialSha256": None,
+                        "width": 2,
+                        "height": 3,
+                        "cameraModel": "Canon EOS 5D Mark II",
+                        "exifOrientation": None,
+                        "isRaw": 0,
+                        "isJpeg": 1,
+                        "thumbnailPath": None,
+                        "createdAt": 1.0,
+                    },
+                )
+            finally:
+                connection.close()
+
+            repository.upsertOrientationAction(
+                "rot-id",
+                {
+                    "photoId": "rot-id",
+                    "relativePath": "rot.jpg",
+                    "status": "pending",
+                    "selectedRotation": None,
+                    "suggestedRotation": 90,
+                },
+            )
+
+            service = ApplyActionsService(repository)
+            applyResult = service.apply(
+                str(archiveRoot),
+                tempDir,
+                ".trash/duplicates",
+                False,
+                False,
+                True,
+            )
+
+            with Image.open(imagePath) as rotatedImage:
+                self.assertEqual(rotatedImage.size, (3, 2))
+            self.assertEqual(applyResult["orientationApplied"], 1)
+            self.assertEqual(len(applyResult["errors"]), 0)

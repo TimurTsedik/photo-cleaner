@@ -26,6 +26,8 @@ class ApplyActionsService:
         in_workspacePath: str,
         in_duplicateTrashDir: str,
         in_dryRun: bool,
+        in_applyPendingDuplicates: bool = False,
+        in_applyPendingOrientation: bool = False,
     ) -> dict[str, Any]:
         ret: dict[str, Any] = {
             "dryRun": bool(in_dryRun),
@@ -68,6 +70,7 @@ class ApplyActionsService:
             archiveRoot,
             duplicateTrashRoot,
             in_dryRun,
+            in_applyPendingDuplicates,
             journalPath,
             runId,
         )
@@ -76,6 +79,7 @@ class ApplyActionsService:
             backupRoot,
             reorientedTrashRoot,
             in_dryRun,
+            in_applyPendingOrientation,
             journalPath,
             runId,
         )
@@ -248,6 +252,7 @@ class ApplyActionsService:
         in_archiveRoot: Path,
         in_duplicateTrashRoot: Path,
         in_dryRun: bool,
+        in_applyPendingDuplicates: bool,
         in_journalPath: Path,
         in_runId: str,
     ) -> dict[str, Any]:
@@ -266,10 +271,29 @@ class ApplyActionsService:
         groupKeyToMovePhotoIds: dict[str, list[str]] = {}
         for groupKey, groupPayload in duplicateActions.items():
             statusValue = str(groupPayload.get("status", "")).strip().lower()
-            if statusValue != "confirmed":
+            selectedKeepPhotoId = str(groupPayload.get("selectedKeepPhotoId", "")).strip()
+            if (
+                statusValue == "pending" and
+                in_applyPendingDuplicates and
+                not selectedKeepPhotoId
+            ):
+                selectedKeepPhotoId = str(
+                    groupPayload.get("recommendedKeepPhotoId", "")
+                ).strip()
+
+            shouldApplyGroup = (
+                statusValue == "confirmed" or
+                (statusValue == "pending" and in_applyPendingDuplicates)
+            )
+            if not shouldApplyGroup:
+                continue
+            if not selectedKeepPhotoId:
+                ret["skipped"] = int(ret["skipped"]) + 1
+                ret["errors"].append(
+                    f"duplicate group has no selected/recommended keep id: {groupKey}"
+                )
                 continue
 
-            selectedKeepPhotoId = str(groupPayload.get("selectedKeepPhotoId", "")).strip()
             photoIds = groupPayload.get("photoIds", [])
             if not isinstance(photoIds, list):
                 continue
@@ -359,6 +383,7 @@ class ApplyActionsService:
         in_backupRoot: Path,
         in_reorientedTrashRoot: Path,
         in_dryRun: bool,
+        in_applyPendingOrientation: bool,
         in_journalPath: Path,
         in_runId: str,
     ) -> dict[str, Any]:
@@ -373,10 +398,16 @@ class ApplyActionsService:
         orientationActions = self._repository.getOrientationActions()
         for actionPayload in orientationActions.values():
             statusValue = str(actionPayload.get("status", "")).strip().lower()
-            if statusValue != "confirmed":
+            selectedRotationRaw = None
+            if statusValue == "confirmed":
+                selectedRotationRaw = actionPayload.get("selectedRotation")
+            elif statusValue == "pending" and in_applyPendingOrientation:
+                selectedRotationRaw = actionPayload.get("selectedRotation")
+                if selectedRotationRaw is None:
+                    selectedRotationRaw = actionPayload.get("suggestedRotation")
+            else:
                 continue
 
-            selectedRotationRaw = actionPayload.get("selectedRotation")
             try:
                 selectedRotation = int(selectedRotationRaw)
             except (TypeError, ValueError):
