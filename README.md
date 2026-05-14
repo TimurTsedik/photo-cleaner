@@ -1,37 +1,21 @@
-# photo-cleaner
+# Photo Cleaner
 
-`photo-cleaner` — локальный инструмент для:
-- сканирования большого фотоархива в SQLite;
-- поиска групп дубликатов;
-- поиска и ручного подтверждения кандидатов на разворот;
-- подготовки датасета и обучения модели ориентации.
+`Photo Cleaner` — локальная система для быстрой чистки фотоархива:  
+сканирует архив, находит дубликаты, подсказывает проблемы с ориентацией, сохраняет все решения в SQLite и позволяет применить их в один клик через веб-панель.
 
-Система работает через веб-панель и хранит решения в БД.  
-Отчеты (`/reports/duplicates`, `/reports/orientation`) теперь динамические: страница строится из текущего состояния БД, без генерации статических `html` файлов в `workspace/reports`.
+![Админ-панель Photo Cleaner](image.png)
 
-## Что хранится в БД
+## Что вы получаете
 
-Основная таблица `photos` содержит:
-- путь к файлу;
-- размер, mtime, расширение;
-- метаданные (`cameraModel`, `width`, `height`, `exifOrientation`);
-- флаги `isJpeg`/`isRaw`.
+- Единый workflow: `полный цикл = скан + дубликаты + ориентация`.
+- Динамические отчеты (без статических html-слепков): данные всегда берутся из БД.
+- Автосохранение решений по каждому действию пользователя.
+- Безопасное применение изменений с `dry-run` и `undo-last-apply`.
+- Подготовка датасета и обучение модели ориентации на подтвержденных кейсах.
 
-Также есть таблицы действий:
-- `duplicateActions` — решения по дубликатам (какой файл оставить);
-- `orientationActions` — решения по ориентации (подтвержденный разворот/ручная проверка).
+## Быстрый старт (5 минут)
 
-## Требования
-
-- Python 3.11+ (рекомендуется 3.12/3.13).
-- Рабочее виртуальное окружение `.venv`.
-- Доступ к архиву, указанному в `config.yaml`.
-
-По метаданным:
-- если в системе есть `exiftool`, он используется для RAW;
-- если `exiftool` нет, используется Python-пакет `exifread` (устанавливается из `requirements.txt` в `.venv`).
-
-## Установка
+### 1) Установка
 
 ```bash
 python3 -m venv .venv
@@ -39,161 +23,137 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Проверка установки `exifread`:
+### 2) Настройка `config.yaml`
 
-```bash
-.venv/bin/python -m pip show exifread
-```
+Минимально проверьте:
+- `archive.root` — путь к архиву фото;
+- `workspace.path` — рабочая папка (БД, отчеты, превью, модели);
+- `orientation.trustedCameraModels` — камеры, которые считаются “правильными” по ориентации;
+- `orientation.excludedPathPrefixes` — папки, которые нужно полностью игнорировать.
 
-## Запуск панели управления (основной режим)
+### 3) Запуск панели
 
 ```bash
 python -m photo_cleaner --config config.yaml
 ```
 
-После запуска откроется локальная панель:
-- `Скан` — сканирование архива и заполнение `photos`;
-- `Собрать дубликаты` — расчет групп дубликатов и заполнение `duplicateActions`;
-- `Найти кандидатов на неверную ориентацию фото` — ML-инференс и заполнение `orientationActions`.
+Панель откроется на `http://127.0.0.1:8765`.
 
-Рекомендуемый порядок:
-1. `scan`
-2. `duplicates`
-3. `orientation`
-4. ручная проверка в отчетах `/reports/duplicates` и `/reports/orientation`.
+### 4) Запуск полного цикла
 
-## Как устроены отчеты
+Нажмите кнопку:
+- `Запустить полный цикл: скан + дубликаты + ориентация`
 
-### Дубликаты
-- открываются по `/reports/duplicates`;
-- каждая группа показывает recommended KEEP;
-- выбор сохраняется сразу в БД через `/api/actions`.
+До первого полного цикла остальные действия в панели намеренно заблокированы.
 
-### Ориентация
-- открываются по `/reports/orientation`;
-- можно принять предложенный угол или выбрать вручную (`90`/`270`/`manual`);
-- подтверждения сохраняются в `orientationActions`.
+### 5) Подтверждение и применение
 
-## Обучение модели ориентации
+1. Откройте отчеты:
+   - `Открыть отчет дубликатов`
+   - `Открыть отчет ориентации`
+2. Подтвердите решения.
+3. Вернитесь в панель и нажмите `Выполнить все действия`.
 
-Есть два шага: сборка датасета и обучение.
+---
 
-### 1) Сборка датасета
+## Элементы админ-панели
 
-Команда:
+### 1) `KPI и статус`
 
-```bash
-.venv/bin/python -c "from photo_cleaner.operations import PhotoCleanerOperations; PhotoCleanerOperations('config.yaml').runBuildOrientationDataset()"
-```
+- **Всего файлов в БД** — текущее количество фото в `photos`.
+- **Ориентация: обработано** — доля подтвержденных решений по ориентации.
+- **Дубликаты: подтверждено** — доля подтвержденных групп дубликатов.
+- **Доля manual review** — сколько кандидатов по ориентации осталось ручными.
 
-В выборку попадают:
-- trusted upright фото (`exifOrientation = 1`) по `datasetCameraModel`;
-- подтвержденные в UI кейсы ориентации (`status=confirmed`, `selectedRotation=90/270`) с учетом выбранного разворота.
+### 2) `Сводка данных`
 
-Итоговый манифест:
-- `workspace/orientation_dataset/dataset_manifest.json`.
+Карточки:
+- **Камеры из config (trusted)** — камеры, исключенные из проверки ориентации.
+- **Камеры, реально найденные в архиве** — фактическое распределение по камерам.
+- **Количество файлов по типам** — распределение по расширениям.
+- **Дубликаты** — количество exact/similar групп и файлов.
+- **Решения по дубликатам** — `Confirmed / Pending`.
+- **Ориентация (ML)** — `Candidates / Suggested auto / Suggested manual`.
+- **Решения по ориентации** — `Resolved / Pending`.
 
-### 2) Обучение
+### 3) `Редактирование config.yaml`
 
-```bash
-python -m photo_cleaner train-orientation-model --config config.yaml
-```
+- Изменяемые поля:
+  - `archive.root`
+  - `orientation.trustedCameraModels`
+  - `orientation.excludedPathPrefixes`
+- Кнопки:
+  - `Сохранить config.yaml`
+  - `Перечитать config.yaml`
 
-Результаты:
-- checkpoint: путь из `orientation.ml.checkpointPath`;
-- метрики: путь из `orientation.ml.metricsPath`.
+Важно: папка `duplicates.trashDir` автоматически добавляется в ignored-list ориентации.
 
-## Применение действий к архиву
+### 4) `Команды`
 
-Команды:
+- **Запустить полный цикл: скан + дубликаты + ориентация**  
+  главный вход в систему.
+- **Выполнить все действия**  
+  применяет подтвержденные решения из БД к архиву.
+- **Отменить последнее применение**  
+  откатывает последний `apply` по журналу.
+- **Очистить базу (полностью)**  
+  удаляет `workspace/cleanup.db` и `workspace/actions.json`.
+- **Открыть отчет дубликатов / ориентации**  
+  быстрый переход в интерактивные отчеты.
 
-```bash
-python -m photo_cleaner apply --config config.yaml --dry-run
-python -m photo_cleaner apply --config config.yaml
-python -m photo_cleaner undo-last-apply --config config.yaml --dry-run
-python -m photo_cleaner undo-last-apply --config config.yaml
-```
+### 5) `Логи выполнения`
 
-Что делает `apply`:
-- читает подтвержденные действия из БД;
-- для `orientationActions` вращает JPEG с `selectedRotation=90/270`;
-- для `duplicateActions` переносит файлы (кроме KEEP) в `duplicates.trashDir`.
+Показывает живой лог текущей операции: этапы, прогресс, ошибки и финальный статус.
 
-`--dry-run` только печатает план операций и ничего не меняет на диске.
+---
 
-`undo-last-apply`:
-- откатывает последний завершенный `apply` (не dry-run) по журналу;
-- восстанавливает перемещенные дубликаты обратно;
-- восстанавливает JPEG из backup перед поворотом.
+## Как работают отчеты
 
-## Ключевые параметры `config.yaml`
+### Отчет дубликатов (`/reports/duplicates`)
 
-### `archive`
-- `root` — корень архива фотографий.
+- Показывает exact и similar группы.
+- Позволяет выбрать KEEP/MOVE.
+- Есть массовая кнопка “Согласиться со всеми рекомендациями”.
+- Все изменения сразу сохраняются в БД (`duplicateActions`).
 
-### `workspace`
-- `path` — рабочая директория (БД, датасет, модели, превью).
+### Отчет ориентации (`/reports/orientation`)
 
-### `files`
-- `jpegExtensions` — расширения, которые сканируются как JPEG/preview-кандидаты;
-- `rawExtensions` — расширения RAW/видео/доп. форматов.
+- Показывает каждое фото-кандидат с вариантами поворота.
+- Можно принять рекомендацию или выставить вручную (`90`, `270`, `manual`).
+- Есть массовая кнопка “Согласиться со всеми рекомендациями”, при этом вручную измененные карточки не перетираются.
+- Все изменения сразу сохраняются в БД (`orientationActions`).
 
-### `orientation`
-- `trustedCameraModels` — модели камер, считающиеся “доверенными”;
-- `excludedPathPrefixes` — подпути, исключаемые из обработки;
-- `candidateExtensions` — расширения кандидатов на разворот;
-- `neverRotateExtensions` — форматы, которые не вращаем автоматически.
+---
 
-### `orientation.ml`
-- `datasetCameraModel`, `datasetRoot`;
-- `checkpointPath`, `metricsPath`;
-- `trainRatio`, `valRatio`, `randomSeed`;
-- `imageSize`, `jpegQuality`, `batchSize`, `epochs`, `learningRate`;
-- `device` (`mps`/`cpu`);
-- `confidenceThreshold`, `marginThreshold`.
+## Настройка системы (ключевые блоки `config.yaml`)
 
-## Тесты
+- `archive.root` — корень фотоархива.
+- `workspace.path` — рабочая папка сервиса.
+- `files.jpegExtensions` / `files.rawExtensions` — поддерживаемые форматы.
+- `duplicates.trashDir` — куда переносить MOVE-файлы.
+- `orientation.trustedCameraModels` — камеры, исключенные из orientation-candidates.
+- `orientation.excludedPathPrefixes` — подпапки, полностью исключенные из скана и последующей аналитики.
+- `orientation.candidateExtensions` — расширения кандидатов ориентации.
+- `orientation.neverRotateExtensions` — расширения, которые не вращаем.
+- `orientation.ml.*` — параметры модели/инференса/обучения.
 
-Полный прогон:
+---
 
-```bash
-source .venv/bin/activate
-python -m unittest discover -s tests -p "test_*.py" -v
-```
+## Важно про скан и “игнор”
 
-## Типичные проблемы
+После каждого скана БД синхронизируется с актуальным результатом сканера:
+- файлы из ignored-папок не попадают в `photos`;
+- если раньше были в БД, после перескана удаляются;
+- для дублей и ориентации они “как будто не существуют”.
 
-### 1) Не читаются RAW-метаданные
-Проверь зависимости в `.venv`:
+---
 
-```bash
-python -m pip install -r requirements.txt
-```
-
-Если нет `exiftool`, будет использован `exifread`.
-
-### 2) KPI в панели выглядят “старыми”
-- обнови страницу (hard refresh);
-- убедись, что сервер запущен на актуальном коде (перезапусти панель).
-
-### 3) В датасет попало меньше подтвержденных кейсов, чем ожидалось
-Проверь в `orientationActions`:
-- `status` должен быть `confirmed`;
-- `selectedRotation` должен быть `90` или `270`;
-- файл должен быть JPEG и попадать в `candidateExtensions`.
-
-## Быстрые команды
+## CLI-команды
 
 Запуск панели:
 
 ```bash
 python -m photo_cleaner --config config.yaml
-```
-
-Сборка датасета:
-
-```bash
-.venv/bin/python -c "from photo_cleaner.operations import PhotoCleanerOperations; PhotoCleanerOperations('config.yaml').runBuildOrientationDataset()"
 ```
 
 Обучение:
@@ -202,7 +162,7 @@ python -m photo_cleaner --config config.yaml
 python -m photo_cleaner train-orientation-model --config config.yaml
 ```
 
-Применение действий:
+Применение/откат:
 
 ```bash
 python -m photo_cleaner apply --config config.yaml --dry-run
@@ -210,3 +170,25 @@ python -m photo_cleaner apply --config config.yaml
 python -m photo_cleaner undo-last-apply --config config.yaml --dry-run
 python -m photo_cleaner undo-last-apply --config config.yaml
 ```
+
+---
+
+## Тесты
+
+```bash
+source .venv/bin/activate
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+---
+
+## Типовые проблемы
+
+- **Панель показывает старые данные**  
+  Перезапустите сервер и сделайте hard refresh страницы.
+
+- **Кандидатов по ориентации мало/много**  
+  Проверьте `trustedCameraModels`, `excludedPathPrefixes`, `candidateExtensions`.
+
+- **`apply` дает много skipped/errors**  
+  Обычно неверный `archive.root` (БД и файловая система смотрят в разные пути).
