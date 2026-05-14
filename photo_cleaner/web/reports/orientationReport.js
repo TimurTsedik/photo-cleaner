@@ -52,6 +52,78 @@ function pcOrientationApplySuggested(in_photoId, in_rotation, in_action) {
   pcOrientationSet(in_photoId, in_rotation, in_action, false);
 }
 
+function pcNormalizeRotation(in_rotation) {
+  let ret = null;
+  if (in_rotation === null || in_rotation === undefined) {
+    return ret;
+  }
+  const parsed = Number(in_rotation);
+  if (Number.isFinite(parsed)) {
+    ret = parsed;
+  }
+  return ret;
+}
+
+function pcNormalizeAction(in_action) {
+  const ret = String(in_action || "manual_review");
+  return ret;
+}
+
+function pcIsUserModified(in_item) {
+  const selectedRotation = pcNormalizeRotation(in_item.selectedRotation);
+  const suggestedRotation = pcNormalizeRotation(in_item.suggestedRotation);
+  const selectedAction = pcNormalizeAction(in_item.selectedAction);
+  const suggestedAction = pcNormalizeAction(in_item.suggestedAction);
+  const ret = selectedRotation !== suggestedRotation || selectedAction !== suggestedAction;
+  return ret;
+}
+
+async function pcPersistAllActionsStateNow() {
+  try {
+    const out_response = await fetch("/api/actions?scope=all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pcActionsState || {}),
+    });
+    if (out_response.ok) {
+      pcUpdateInfo("изменения сохранены в базе");
+    } else {
+      pcUpdateInfo("не удалось сохранить изменения в базе");
+    }
+  } catch (_error) {
+    pcUpdateInfo("ошибка сохранения изменений");
+  }
+}
+
+async function pcOrientationApplyAllSuggested() {
+  if (!pcActionsState.orientation || !pcActionsState.orientation.items) {
+    return;
+  }
+  const items = pcActionsState.orientation.items;
+  let appliedCount = 0;
+  let skippedModifiedCount = 0;
+
+  for (const photoId of Object.keys(items)) {
+    const item = items[photoId];
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    if (pcIsUserModified(item)) {
+      skippedModifiedCount += 1;
+      continue;
+    }
+    const suggestedRotation = pcNormalizeRotation(item.suggestedRotation);
+    const suggestedAction = pcNormalizeAction(item.suggestedAction);
+    pcOrientationSet(photoId, suggestedRotation, suggestedAction, true);
+    appliedCount += 1;
+  }
+
+  await pcPersistAllActionsStateNow();
+  pcUpdateInfo(
+    `применены рекомендации: ${appliedCount}, пропущено (изменено вручную): ${skippedModifiedCount}`,
+  );
+}
+
 function pcOrientationSet(in_photoId, in_rotation, in_action, in_skipSave) {
   if (!pcActionsState.orientation || !pcActionsState.orientation.items) {
     return;

@@ -31,3 +31,9 @@ class ScanService:
 
         for photo in photos:
             self._repository.insertPhoto(photo)
+
+        scannedRelativePaths = [
+            str(photo["relativePath"])
+            for photo in photos
+        ]
+        self._repository.syncPhotosToRelativePaths(scannedRelativePaths)

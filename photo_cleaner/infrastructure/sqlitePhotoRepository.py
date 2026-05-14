@@ -78,7 +78,7 @@ class SqlitePhotoRepository:
             cursor = connection.cursor()
 
             cursor.execute("""
-                INSERT OR REPLACE INTO photos (
+                INSERT INTO photos (
                     id,
                     relativePath,
                     extension,
@@ -96,6 +96,20 @@ class SqlitePhotoRepository:
                     createdAt
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(relativePath) DO UPDATE SET
+                    extension = excluded.extension,
+                    size = excluded.size,
+                    mtime = excluded.mtime,
+                    sha256 = excluded.sha256,
+                    partialSha256 = excluded.partialSha256,
+                    width = excluded.width,
+                    height = excluded.height,
+                    cameraModel = excluded.cameraModel,
+                    exifOrientation = excluded.exifOrientation,
+                    isRaw = excluded.isRaw,
+                    isJpeg = excluded.isJpeg,
+                    thumbnailPath = excluded.thumbnailPath,
+                    createdAt = excluded.createdAt
             """, (
                 in_photo["id"],
                 in_photo["relativePath"],
@@ -116,6 +130,45 @@ class SqlitePhotoRepository:
 
             connection.commit()
 
+        finally:
+            connection.close()
+
+    def syncPhotosToRelativePaths(
+        self,
+        in_relativePaths: list[str],
+    ) -> None:
+        connection = sqlite3.connect(self._dbPath)
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""
+                CREATE TEMP TABLE IF NOT EXISTS scannedRelativePaths (
+                    relativePath TEXT PRIMARY KEY
+                )
+            """)
+            cursor.execute("DELETE FROM scannedRelativePaths")
+
+            normalizedPaths = sorted({
+                str(relativePath).strip()
+                for relativePath in in_relativePaths
+                if str(relativePath).strip()
+            })
+            if normalizedPaths:
+                cursor.executemany(
+                    "INSERT INTO scannedRelativePaths (relativePath) VALUES (?)",
+                    [(pathValue,) for pathValue in normalizedPaths],
+                )
+                cursor.execute("""
+                    DELETE FROM photos
+                    WHERE relativePath NOT IN (
+                        SELECT relativePath
+                        FROM scannedRelativePaths
+                    )
+                """)
+            else:
+                cursor.execute("DELETE FROM photos")
+
+            connection.commit()
         finally:
             connection.close()
 
@@ -464,7 +517,6 @@ class SqlitePhotoRepository:
                     exifOrientation
                 FROM photos
                 WHERE isJpeg = 1
-                AND exifOrientation IS NULL
                 ORDER BY relativePath
             """)
 

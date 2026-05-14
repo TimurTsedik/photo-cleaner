@@ -1,8 +1,10 @@
 const logsNode = document.getElementById("logs");
-const archiveRootNode = document.getElementById("archiveRoot");
-const workspacePathNode = document.getElementById("workspacePath");
-const dbStatsNode = document.getElementById("dbStats");
-const excludedPathPrefixesNode = document.getElementById("excludedPathPrefixes");
+const fullRunButtonNode = document.getElementById("fullRunButton");
+const applyButtonNode = document.getElementById("applyButton");
+const undoApplyButtonNode = document.getElementById("undoApplyButton");
+const clearDbButtonNode = document.getElementById("clearDbButton");
+const openDuplicatesReportButtonNode = document.getElementById("openDuplicatesReportButton");
+const openOrientationReportButtonNode = document.getElementById("openOrientationReportButton");
 const trustedCameraModelsNode = document.getElementById("trustedCameraModels");
 const usedCameraModelsNode = document.getElementById("usedCameraModels");
 const extensionCountsNode = document.getElementById("extensionCounts");
@@ -17,8 +19,6 @@ const oriAutoCountNode = document.getElementById("oriAutoCount");
 const oriManualCountNode = document.getElementById("oriManualCount");
 const oriResolvedCountNode = document.getElementById("oriResolvedCount");
 const oriPendingCountNode = document.getElementById("oriPendingCount");
-const cameraSplitStatsNode = document.getElementById("cameraSplitStats");
-const nextActionsNode = document.getElementById("nextActions");
 const cfgArchiveRootNode = document.getElementById("cfgArchiveRoot");
 const cfgTrustedCamerasNode = document.getElementById("cfgTrustedCameras");
 const cfgExcludedPrefixesNode = document.getElementById("cfgExcludedPrefixes");
@@ -34,6 +34,36 @@ const manualBadgeNode = document.getElementById("manualBadge");
 
 let isRunning = false;
 let logOffset = 0;
+let hasCompletedFullRun = false;
+
+function updateCommandButtonsState() {
+  const allButtons = Array.from(document.querySelectorAll("button"));
+  for (const buttonNode of allButtons) {
+    if (!(buttonNode instanceof HTMLButtonElement)) {
+      continue;
+    }
+
+    const isFullRunButton = fullRunButtonNode !== null && buttonNode === fullRunButtonNode;
+    const isClearDbButton = clearDbButtonNode !== null && buttonNode === clearDbButtonNode;
+
+    if (isClearDbButton) {
+      buttonNode.disabled = false;
+      continue;
+    }
+
+    if (isRunning) {
+      buttonNode.disabled = true;
+      continue;
+    }
+
+    if (!hasCompletedFullRun) {
+      buttonNode.disabled = !isFullRunButton;
+      continue;
+    }
+
+    buttonNode.disabled = false;
+  }
+}
 
 function appendLogs(text) {
   logsNode.textContent += "\n\n" + text;
@@ -45,6 +75,9 @@ function openReport(url) {
 }
 
 function renderSimpleList(listNode, values) {
+  if (!listNode) {
+    return;
+  }
   listNode.innerHTML = "";
   if (!values || values.length === 0) {
     const item = document.createElement("li");
@@ -60,6 +93,9 @@ function renderSimpleList(listNode, values) {
 }
 
 function renderCountList(listNode, values, keyName) {
+  if (!listNode) {
+    return;
+  }
   listNode.innerHTML = "";
   if (!values || values.length === 0) {
     const item = document.createElement("li");
@@ -84,26 +120,6 @@ function formatPercent(part, total) {
 function setBadge(node, level, text) {
   node.className = "badge " + level;
   node.textContent = text;
-}
-
-function renderNextActions(payload) {
-  const actions = [];
-  if (Number(payload.orientationPendingCount || 0) > 0) {
-    actions.push("Есть pending по ориентации: открой отчет ориентации и заверши ручную проверку.");
-  }
-  if (Number(payload.duplicatePendingCount || 0) > 0) {
-    actions.push("Есть pending по дубликатам: открой отчет дубликатов и подтверди KEEP/MOVE.");
-  }
-  if (Number(payload.totalFiles || 0) === 0) {
-    actions.push("База пуста: сначала запусти команду 'Скан'.");
-  }
-  if (Number(payload.orientationCandidatesCount || 0) === 0 && Number(payload.totalFiles || 0) > 0) {
-    actions.push("Нет кандидатов на разворот: проверь trusted камеры и excludedPathPrefixes в config.");
-  }
-  if (actions.length === 0) {
-    actions.push("Критичных задач нет. Можно запускать очередной цикл проверки архива.");
-  }
-  renderSimpleList(nextActionsNode, actions);
 }
 
 function renderKpi(payload) {
@@ -163,11 +179,6 @@ async function loadSummary() {
       cache: "no-store",
     });
     const payload = await response.json();
-    archiveRootNode.textContent = String(payload.archiveRoot || "-");
-    workspacePathNode.textContent = String(payload.workspacePath || "-");
-    dbStatsNode.textContent =
-      "size=" + String(payload.dbSizeBytes || 0) + " bytes, updatedAt=" + String(payload.dbUpdatedAt || "-");
-    renderSimpleList(excludedPathPrefixesNode, payload.excludedPathPrefixes || []);
     renderSimpleList(trustedCameraModelsNode, payload.trustedCameraModels || []);
     renderCountList(usedCameraModelsNode, payload.usedCameraModelCounts || [], "cameraModel");
     renderCountList(extensionCountsNode, payload.extensionCounts || [], "extension");
@@ -182,14 +193,15 @@ async function loadSummary() {
     oriManualCountNode.textContent = String(payload.orientationSuggestedManualCount || 0);
     oriResolvedCountNode.textContent = String(payload.orientationResolvedCount || 0);
     oriPendingCountNode.textContent = String(payload.orientationPendingCount || 0);
-    cameraSplitStatsNode.textContent =
-      "trusted=" + String(payload.trustedFilesCount || 0) +
-      ", not trusted=" + String(payload.untrustedFilesCount || 0);
     renderKpi(payload);
-    renderNextActions(payload);
   } catch (error) {
     appendLogs("Ошибка загрузки сводки: " + String(error));
   }
+}
+
+async function refreshHeaderData() {
+  await loadSummary();
+  await loadConfigEditor();
 }
 
 function splitLines(textValue) {
@@ -252,6 +264,7 @@ async function runCommand(command) {
     return;
   }
   isRunning = true;
+  updateCommandButtonsState();
   logOffset = 0;
   appendLogs(">>> start: " + command);
   try {
@@ -265,12 +278,13 @@ async function runCommand(command) {
       appendLogs(payload.logs || "Не удалось запустить команду.");
       return;
     }
-    await pollLogsUntilDone();
+    await pollLogsUntilDone(command);
   } catch (error) {
     appendLogs("Ошибка: " + String(error));
   } finally {
     appendLogs(">>> done: " + command);
     isRunning = false;
+    updateCommandButtonsState();
   }
 }
 
@@ -282,7 +296,7 @@ function runDangerousCommand(command, confirmMessage) {
   runCommand(command);
 }
 
-async function pollLogsUntilDone() {
+async function pollLogsUntilDone(command) {
   let done = false;
   while (!done) {
     const response = await fetch("/api/status?offset=" + String(logOffset), { method: "GET" });
@@ -293,26 +307,32 @@ async function pollLogsUntilDone() {
     logOffset = Number(payload.nextOffset || logOffset);
     if (payload.finished) {
       done = true;
+      if (command === "full-run" && payload.success) {
+        hasCompletedFullRun = true;
+      }
+      if (command === "clear-db" && payload.success) {
+        hasCompletedFullRun = false;
+      }
       if (payload.reportUrl) {
         appendLogs(">>> opening report: " + payload.reportUrl);
         window.open(payload.reportUrl, "_blank");
       }
-      await loadSummary();
+      await refreshHeaderData();
     } else {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 }
 
-loadSummary();
-loadConfigEditor();
+updateCommandButtonsState();
+refreshHeaderData();
 
 window.addEventListener("focus", () => {
-  loadSummary();
+  refreshHeaderData();
 });
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    loadSummary();
+    refreshHeaderData();
   }
 });

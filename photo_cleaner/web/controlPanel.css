@@ -76,6 +76,18 @@ button:hover {
   background: #395279;
 }
 
+button:disabled {
+  background: #1f2636;
+  border-color: #2f3a54;
+  color: #7f8aa6;
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
+button:disabled:hover {
+  background: #1f2636;
+}
+
 .secondary {
   background: #2a3146;
   border-color: #444f71;
@@ -213,6 +225,11 @@ button:hover {
   color: #d8e0f3;
   max-height: 220px;
   overflow: auto;
+}
+
+.summaryList {
+  margin-top: 2px;
+  max-height: 190px;
 }
 
 textarea,

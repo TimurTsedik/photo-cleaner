@@ -59,6 +59,7 @@ class ControlPanelState:
         self._finished = True
         self._reportUrl = None
         self._commandName = ""
+        self._ensureDuplicateTrashInExcludedPrefixes()
 
     def _reloadConfig(
         self,
@@ -96,6 +97,16 @@ class ControlPanelState:
                 elif in_command == "orientation":
                     reportPath = self._operations.runBuildOrientationCandidatesReport()
                     reportUrl = f"/{reportPath}"
+                elif in_command == "full-run":
+                    print("full-run started: scan -> duplicates -> orientation")
+                    self._operations.runScan()
+                    print("full-run step completed: scan")
+                    _ = self._operations.runBuildDuplicatesReport()
+                    print("full-run step completed: duplicates")
+                    reportPath = self._operations.runBuildOrientationCandidatesReport()
+                    print("full-run step completed: orientation")
+                    reportUrl = f"/{reportPath}"
+                    print("full-run finished")
                 elif in_command == "apply":
                     self._operations.runApply(False)
                 elif in_command == "undo-last-apply":
@@ -252,7 +263,7 @@ class ControlPanelState:
             orientationBlock.get("candidateExtensions", []),
             orientationBlock.get("neverRotateExtensions", []),
             trustedCameraModels,
-            repository.getAllDuplicateCandidatePhotoIds(),
+            set(),
         )
 
         actionsPayload = repository.buildActionsPayloadFromDb()
@@ -475,6 +486,7 @@ class ControlPanelState:
                 archiveBlock["root"] = archiveRoot
             orientationBlock["trustedCameraModels"] = trustedCameraModels
             orientationBlock["excludedPathPrefixes"] = excludedPathPrefixes
+            self._ensureDuplicateTrashInExcludedPrefixes(configToSave)
 
             yamlText = yaml.safe_dump(
                 configToSave,
@@ -491,20 +503,77 @@ class ControlPanelState:
             }
             return ret
 
+    def _ensureDuplicateTrashInExcludedPrefixes(
+        self,
+        in_configToSave: dict | None = None,
+    ) -> None:
+        configToSave = in_configToSave
+        if configToSave is None:
+            configToSave = ConfigLoader().load(str(self._configPath))
+
+        archiveBlock = configToSave.setdefault("archive", {})
+        duplicatesBlock = configToSave.setdefault("duplicates", {})
+        orientationBlock = configToSave.setdefault("orientation", {})
+
+        archiveRootRaw = str(archiveBlock.get("root", "")).strip()
+        archiveRootPath = Path(archiveRootRaw)
+        duplicateTrashRaw = str(
+            duplicatesBlock.get("trashDir", ".photo-cleaner-trash/duplicates")
+        ).strip()
+        if not duplicateTrashRaw:
+            duplicateTrashRaw = ".photo-cleaner-trash/duplicates"
+        duplicateTrashPath = Path(duplicateTrashRaw)
+
+        if duplicateTrashPath.is_absolute():
+            duplicateExcludedPrefix = str(duplicateTrashPath)
+        else:
+            duplicateExcludedPrefix = duplicateTrashRaw
+            if archiveRootRaw:
+                try:
+                    duplicateExcludedPrefix = str(
+                        (archiveRootPath / duplicateTrashPath).resolve()
+                    )
+                except Exception:
+                    duplicateExcludedPrefix = duplicateTrashRaw
+
+        excludedPrefixes = orientationBlock.get("excludedPathPrefixes", [])
+        if not isinstance(excludedPrefixes, list):
+            excludedPrefixes = []
+
+        normalizedExistingPrefixes = {
+            str(item).strip().replace("\\", "/").rstrip("/")
+            for item in excludedPrefixes
+            if str(item).strip()
+        }
+        normalizedDuplicatePrefix = (
+            duplicateExcludedPrefix.strip().replace("\\", "/").rstrip("/")
+        )
+
+        if normalizedDuplicatePrefix not in normalizedExistingPrefixes:
+            excludedPrefixes.append(duplicateExcludedPrefix)
+            orientationBlock["excludedPathPrefixes"] = excludedPrefixes
+
+            if in_configToSave is None:
+                yamlText = yaml.safe_dump(
+                    configToSave,
+                    allow_unicode=True,
+                    sort_keys=False,
+                )
+                self._configPath.write_text(yamlText, encoding="utf-8")
+                self._reloadConfig()
+
 
 class _IndexResource:
-    def __init__(
-        self,
-    ) -> None:
-        self._htmlText = _readWebFile("controlPanel.html")
-
     def on_get(
         self,
         in_req: falcon.Request,
         out_resp: falcon.Response,
     ) -> None:
+        out_resp.set_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        out_resp.set_header("Pragma", "no-cache")
+        out_resp.set_header("Expires", "0")
         out_resp.content_type = "text/html; charset=utf-8"
-        out_resp.text = self._htmlText
+        out_resp.text = _readWebFile("controlPanel.html")
 
 
 class _RunCommandResource:
@@ -968,6 +1037,9 @@ class _DynamicOrientationReportResource:
             "<h1>ML orientation report</h1>"
             "<div class=\"subtitle\">ML suggestions for rotation candidates</div>"
             "<div class=\"toolbar\">"
+            "<button onclick=\"pcOrientationApplyAllSuggested()\">"
+            "Согласиться со всеми рекомендациями"
+            "</button>"
             "<span id=\"pcActionsInfo\" class=\"meta\">Автосохранение включено</span>"
             "</div>"
             f"{summaryHtml}"
@@ -1045,6 +1117,9 @@ class _StaticAssetResource:
         if not assetPath.is_file():
             raise falcon.HTTPNotFound()
 
+        out_resp.set_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        out_resp.set_header("Pragma", "no-cache")
+        out_resp.set_header("Expires", "0")
         out_resp.content_type = mimetypes.guess_type(str(assetPath))[0] or "application/octet-stream"
         out_resp.data = assetPath.read_bytes()
 

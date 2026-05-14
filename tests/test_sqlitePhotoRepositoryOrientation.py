@@ -44,6 +44,67 @@ def insertPhoto(
 
 
 class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
+    def test_insertPhoto_sameRelativePath_updatesRowWithoutDuplicate(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tempDir:
+            dbPath = str(Path(tempDir) / "t.db")
+            repository = SqlitePhotoRepository(dbPath)
+            repository.initialize()
+
+            firstPhoto = {
+                "id": "photo-first-id",
+                "relativePath": "folder/a.jpg",
+                "extension": ".jpg",
+                "size": 10,
+                "mtime": 1.0,
+                "sha256": "sha-first",
+                "partialSha256": None,
+                "width": 100,
+                "height": 80,
+                "cameraModel": "Canon EOS 450D",
+                "exifOrientation": None,
+                "isRaw": 0,
+                "isJpeg": 1,
+                "thumbnailPath": None,
+                "createdAt": 1.0,
+            }
+            secondPhoto = dict(firstPhoto)
+            secondPhoto["id"] = "photo-second-id"
+            secondPhoto["size"] = 999
+            secondPhoto["mtime"] = 2.0
+            secondPhoto["sha256"] = "sha-second"
+            secondPhoto["width"] = 200
+            secondPhoto["height"] = 160
+            secondPhoto["createdAt"] = 2.0
+
+            repository.insertPhoto(firstPhoto)
+            repository.insertPhoto(secondPhoto)
+
+            connection = sqlite3.connect(dbPath)
+            connection.row_factory = sqlite3.Row
+            try:
+                cursor = connection.cursor()
+                cursor.execute("SELECT COUNT(*) AS countValue FROM photos")
+                countRow = cursor.fetchone()
+                self.assertEqual(int(countRow["countValue"]), 1)
+
+                cursor.execute(
+                    "SELECT id, relativePath, size, mtime, sha256, width, height "
+                    "FROM photos WHERE relativePath = ?",
+                    ("folder/a.jpg",),
+                )
+                photoRow = cursor.fetchone()
+                self.assertIsNotNone(photoRow)
+                self.assertEqual(str(photoRow["id"]), "photo-first-id")
+                self.assertEqual(int(photoRow["size"]), 999)
+                self.assertEqual(float(photoRow["mtime"]), 2.0)
+                self.assertEqual(str(photoRow["sha256"]), "sha-second")
+                self.assertEqual(int(photoRow["width"]), 200)
+                self.assertEqual(int(photoRow["height"]), 160)
+            finally:
+                connection.close()
+
     def test_getExtensionCounts_groupsAndNormalizes(
         self,
     ) -> None:
@@ -196,7 +257,7 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
             totalCount = repository.getTotalPhotosCount()
             self.assertEqual(totalCount, 2)
 
-    def test_getOrientationCandidatesForFaceDetection_onlyNullExif(
+    def test_getOrientationCandidatesForFaceDetection_anyExifValue(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tempDir:
@@ -235,6 +296,12 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
                 rowExif1["relativePath"] = "exif1.jpg"
                 rowExif1["exifOrientation"] = 1
                 insertPhoto(connection, rowExif1)
+
+                rowExif6 = dict(baseRow)
+                rowExif6["id"] = "p-6"
+                rowExif6["relativePath"] = "exif6.jpg"
+                rowExif6["exifOrientation"] = 6
+                insertPhoto(connection, rowExif6)
             finally:
                 connection.close()
 
@@ -245,7 +312,8 @@ class SqlitePhotoRepositoryOrientationTests(unittest.TestCase):
 
             ids = {item["id"] for item in candidates}
             self.assertIn("p-null", ids)
-            self.assertNotIn("p-1", ids)
+            self.assertIn("p-1", ids)
+            self.assertIn("p-6", ids)
 
     def test_getTrustedUprightPhotosForOrientationDataset_filtersCanon(
         self,

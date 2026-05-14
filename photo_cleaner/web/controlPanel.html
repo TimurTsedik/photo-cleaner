@@ -11,10 +11,7 @@
   <div class="subtitle">Панель управления пайплайном: скан, дубликаты, кандидаты на неверную ориентацию фото.</div>
 
   <div class="card">
-    <div class="sectionTitle">KPI и статус</div>
-    <div class="buttons">
-      <button onclick="loadSummary()">Обновить сводку</button>
-    </div>
+
     <div class="kpiGrid">
       <div class="kpi">
         <div class="kpiLabel">Всего файлов в БД</div>
@@ -39,36 +36,22 @@
         <span id="manualBadge" class="badge warn">-</span>
       </div>
     </div>
-    <div class="row">
-      <div>
-        <div class="metaLine"><b>Папка библиотеки фото:</b> <span id="archiveRoot">-</span></div>
-        <div class="metaLine"><b>Папка workspace:</b> <span id="workspacePath">-</span></div>
-        <div class="metaLine"><b>БД cleanup.db:</b> <span id="dbStats">-</span></div>
-        <div class="metaLine"><b>Камеры trusted / not trusted:</b> <span id="cameraSplitStats">-</span></div>
-      </div>
-      <div>
-        <div class="metaLine"><b>Следующие шаги:</b></div>
-        <ul id="nextActions" class="list"></ul>
-      </div>
-    </div>
   </div>
 
   <div class="card">
     <div class="sectionTitle">Сводка данных</div>
-    <div class="row">
-      <div>
-        <div class="metaLine"><b>Исключаемые папки:</b></div>
-        <ul id="excludedPathPrefixes" class="list"></ul>
-        <div class="metaLine"><b>Камеры из config (trusted):</b></div>
-        <ul id="trustedCameraModels" class="list"></ul>
+    <div class="summaryGrid">
+      <div class="summaryCard">
+        <div class="summaryTitle">Камеры из config (trusted)</div>
+        <ul id="trustedCameraModels" class="list summaryList"></ul>
       </div>
-      <div>
-        <div class="metaLine"><b>Камеры, реально найденные в архиве:</b></div>
-        <ul id="usedCameraModels" class="list"></ul>
+      <div class="summaryCard">
+        <div class="summaryTitle">Камеры, реально найденные в архиве</div>
+        <ul id="usedCameraModels" class="list summaryList"></ul>
       </div>
-      <div>
-        <div class="metaLine"><b>Количество файлов по типам:</b></div>
-        <ul id="extensionCounts" class="list"></ul>
+      <div class="summaryCard">
+        <div class="summaryTitle">Количество файлов по типам</div>
+        <ul id="extensionCounts" class="list summaryList"></ul>
       </div>
     </div>
     <div class="summaryGrid">
@@ -122,14 +105,12 @@
   <div class="card">
     <div class="sectionTitle">Команды</div>
     <div class="buttons">
-      <button onclick="runCommand('scan')">Скан</button>
-      <button onclick="runCommand('duplicates')">Собрать дубликаты</button>
-      <button onclick="runCommand('orientation')">Найти кандидатов на неверную ориентацию фото</button>
-      <button class="primaryAction" onclick="runCommand('apply')">Выполнить все действия</button>
-      <button class="dangerAction" onclick="runCommand('undo-last-apply')">Отменить последнее применение</button>
-      <button class="dangerAction" onclick="runDangerousCommand('clear-db', 'Удалить cleanup.db и actions.json? Это полностью очистит базу.')">Очистить базу (полностью)</button>
-      <button class="secondary" onclick="openReport('/reports/duplicates')">Открыть отчет дубликатов</button>
-      <button class="secondary" onclick="openReport('/reports/orientation')">Открыть отчет ориентации</button>
+      <button id="fullRunButton" class="primaryAction" onclick="runCommand('full-run')">Запустить полный цикл: скан + дубликаты + ориентация</button>
+      <button id="applyButton" class="primaryAction" onclick="runCommand('apply')" disabled>Выполнить все действия</button>
+      <button id="undoApplyButton" class="dangerAction" onclick="runCommand('undo-last-apply')" disabled>Отменить последнее применение</button>
+      <button id="clearDbButton" class="dangerAction" onclick="runDangerousCommand('clear-db', 'Удалить cleanup.db и actions.json? Это полностью очистит базу.')">Очистить базу (полностью)</button>
+      <button id="openDuplicatesReportButton" class="secondary" onclick="openReport('/reports/duplicates')" disabled>Открыть отчет дубликатов</button>
+      <button id="openOrientationReportButton" class="secondary" onclick="openReport('/reports/orientation')" disabled>Открыть отчет ориентации</button>
     </div>
   </div>
 

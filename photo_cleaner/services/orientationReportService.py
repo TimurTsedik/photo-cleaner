@@ -37,7 +37,7 @@ class OrientationReportService:
 
         duplicateCandidateIds = self._repository.getAllDuplicateCandidatePhotoIds()
         print(
-            "duplicate candidates excluded from orientation: "
+            "duplicate candidates detected (not excluded): "
             f"{len(duplicateCandidateIds)}"
         )
 
@@ -45,7 +45,7 @@ class OrientationReportService:
             in_candidateExtensions,
             in_neverRotateExtensions,
             in_trustedCameraModels,
-            duplicateCandidateIds,
+            set(),
         )
         print(f"candidates loaded: {len(candidates)}")
 
@@ -229,9 +229,10 @@ class OrientationReportService:
             return ret
 
         try:
-            from PIL import Image
+            from PIL import Image, ImageOps
 
             with Image.open(in_sourcePath) as image:
+                image = ImageOps.exif_transpose(image)
                 image.thumbnail((256, 256))
                 image = image.convert("RGB")
 
