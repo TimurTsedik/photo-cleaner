@@ -368,6 +368,7 @@ class ControlPanelState:
         with self._dbLock:
             repository = SqlitePhotoRepository(str(self._workspacePath / "cleanup.db"))
             repository.initialize()
+            hasNonEmptyActionsFile = self._hasNonEmptyActionsFile()
 
             orientationBlock = self._config.get("orientation", {})
             excludedPathPrefixes = list(orientationBlock.get("excludedPathPrefixes", []))
@@ -470,8 +471,29 @@ class ControlPanelState:
                 "orientationPendingCount": orientationPendingCount,
                 "trustedFilesCount": trustedFilesCount,
                 "untrustedFilesCount": untrustedFilesCount,
+                "hasNonEmptyActionsFile": hasNonEmptyActionsFile,
             }
             return ret
+
+    def _hasNonEmptyActionsFile(
+        self,
+    ) -> bool:
+        ret = False
+        actionsPath = self._workspacePath / "actions.json"
+        actionsPayload = None
+        if actionsPath.exists():
+            try:
+                actionsPayload = json.loads(actionsPath.read_text(encoding="utf-8"))
+            except Exception:
+                actionsPayload = None
+
+        if isinstance(actionsPayload, dict):
+            orientationItems = actionsPayload.get("orientation", {}).get("items", {})
+            duplicateGroups = actionsPayload.get("duplicates", {}).get("groups", {})
+            hasOrientationItems = isinstance(orientationItems, dict) and len(orientationItems) > 0
+            hasDuplicateGroups = isinstance(duplicateGroups, dict) and len(duplicateGroups) > 0
+            ret = hasOrientationItems or hasDuplicateGroups
+        return ret
 
     def getEditableConfig(
         self,

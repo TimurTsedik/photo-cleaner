@@ -8,6 +8,7 @@ const saveConfigButtonNode = document.getElementById("saveConfigButton");
 const reloadConfigButtonNode = document.getElementById("reloadConfigButton");
 const openDuplicatesReportButtonNode = document.getElementById("openDuplicatesReportButton");
 const openOrientationReportButtonNode = document.getElementById("openOrientationReportButton");
+const openArchiveReportButtonNode = document.getElementById("openArchiveReportButton");
 const trustedCameraModelsNode = document.getElementById("trustedCameraModels");
 const usedCameraModelsNode = document.getElementById("usedCameraModels");
 const extensionCountsNode = document.getElementById("extensionCounts");
@@ -38,6 +39,8 @@ const manualBadgeNode = document.getElementById("manualBadge");
 let isRunning = false;
 let logOffset = 0;
 let hasCompletedFullRun = false;
+let hasNonEmptyDb = false;
+let hasNonEmptyActionsFile = false;
 
 function updateCommandButtonsState() {
   const allButtons = Array.from(document.querySelectorAll("button"));
@@ -66,6 +69,21 @@ function updateCommandButtonsState() {
         buttonNode.disabled = false;
       } else if (orientationRunButtonNode !== null && buttonNode === orientationRunButtonNode) {
         buttonNode.disabled = true;
+      } else if (
+        hasNonEmptyActionsFile &&
+        applyButtonNode !== null &&
+        buttonNode === applyButtonNode
+      ) {
+        buttonNode.disabled = false;
+      } else if (
+        hasNonEmptyDb &&
+        (
+          (openDuplicatesReportButtonNode !== null && buttonNode === openDuplicatesReportButtonNode) ||
+          (openOrientationReportButtonNode !== null && buttonNode === openOrientationReportButtonNode) ||
+          (openArchiveReportButtonNode !== null && buttonNode === openArchiveReportButtonNode)
+        )
+      ) {
+        buttonNode.disabled = false;
       } else {
         buttonNode.disabled = true;
       }
@@ -201,6 +219,8 @@ async function loadSummary() {
       cache: "no-store",
     });
     const payload = await response.json();
+    hasNonEmptyDb = Number(payload.totalFiles || 0) > 0;
+    hasNonEmptyActionsFile = Boolean(payload.hasNonEmptyActionsFile);
     renderSimpleList(trustedCameraModelsNode, payload.trustedCameraModels || []);
     renderCountList(usedCameraModelsNode, payload.usedCameraModelCounts || [], "cameraModel");
     renderCountList(extensionCountsNode, payload.extensionCounts || [], "extension");
@@ -216,6 +236,7 @@ async function loadSummary() {
     oriResolvedCountNode.textContent = String(payload.orientationResolvedCount || 0);
     oriPendingCountNode.textContent = String(payload.orientationPendingCount || 0);
     renderKpi(payload);
+    updateCommandButtonsState();
   } catch (error) {
     appendLogs("Ошибка загрузки сводки: " + String(error));
   }
@@ -389,6 +410,8 @@ async function pollLogsUntilDone(command) {
       }
       if (command === "clear-db" && payload.success) {
         hasCompletedFullRun = false;
+        hasNonEmptyDb = false;
+        hasNonEmptyActionsFile = false;
       }
       if (payload.reportUrl) {
         appendLogs(">>> opening report: " + payload.reportUrl);
