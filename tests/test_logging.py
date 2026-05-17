@@ -1,50 +1,53 @@
 """Minimal smoke test: verify that log() writes to file without double-printing
 and that operations calling log() do not crash."""
 
+import contextlib
+import io
+import logging
 import os
 import tempfile
+import unittest
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from photo_cleaner.logging_config import log, logger
 
 
-class TestLog:
-    def test_log_to_file_only(self, tmp_path):
+class LogTests(unittest.TestCase):
+    def test_log_to_file_only(self):
         """log() with user=False writes to file but NOT to stdout."""
-        log_path = str(tmp_path / "test.log")
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = os.path.join(tmp, "test.log")
 
-        # Reconfigure logger to use a temporary file
-        for handler in logger.handlers[:]:
-            logger.removeHandler(handler)
+            # Reconfigure logger to use a temporary file
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
 
-        fh = __import__("logging").FileHandler(log_path)
-        logger.addHandler(fh)
+            fh = logging.FileHandler(log_path)
+            logger.addHandler(fh)
 
-        log("debug message", level="debug")
-        log("info message", level="info", user=True)
+            log("debug message", level="debug")
 
-        with open(log_path) as f:
-            content = f.read()
+            with open(log_path) as f:
+                content = f.read()
 
-        assert "debug message" in content
-        assert "info message" in content
+            self.assertIn("debug message", content)
 
-    def test_user_true_prints_to_stdout(self, capsys):
-        """log(..., user=True) calls print() — captured by capsys."""
-        log("hello admin", level="info", user=True)
-        captured = capsys.readouterr()
-        assert captured.out == "hello admin\n"
+    def test_user_true_prints_to_stdout(self):
+        """log(..., user=True) calls print() — captured by redirect_stdout."""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            log("hello admin", level="info", user=True)
+        self.assertEqual(buf.getvalue(), "hello admin\n")
 
-    def test_log_no_user_no_print(self, capsys):
+    def test_log_no_user_no_print(self):
         """log(..., user=False) does NOT call print()."""
-        log("internal only", level="debug")
-        captured = capsys.readouterr()
-        assert captured.out == ""
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            log("internal only", level="debug")
+        self.assertEqual(buf.getvalue(), "")
 
 
-class TestOperationsDoesNotCrash:
+class OperationsDoesNotCrashTests(unittest.TestCase):
     def test_runScan_does_not_crash(self):
         """Minimal integration: mock ScanService so runScan() only exercises
         config loading + repository init + log('scan completed')."""
