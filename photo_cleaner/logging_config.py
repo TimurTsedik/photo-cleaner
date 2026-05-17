@@ -8,20 +8,15 @@ os.makedirs(LOG_DIR, exist_ok=True)
 logger = logging.getLogger("photo_cleaner")
 logger.setLevel(logging.DEBUG)
 
-# File handler for all logs
+# File handler for all logs (no StreamHandler — admin panel uses stdout redirect;
+# adding stdout would duplicate messages. User-visible output is handled via
+# log(…, user=True) which calls print() directly.)
 file_handler = logging.FileHandler(os.path.join(LOG_DIR, "photo_cleaner.log"))
 file_handler.setLevel(logging.DEBUG)
 file_fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 file_handler.setFormatter(file_fmt)
 
-# Stream handler for user‑facing info (INFO and above)
-stream_handler = logging.StreamHandler()
-stream_handler.setLevel(logging.INFO)
-stream_fmt = logging.Formatter("%(message)s")
-stream_handler.setFormatter(stream_fmt)
-
 logger.addHandler(file_handler)
-logger.addHandler(stream_handler)
 
 def log(msg: str, *, level: str = "info", user: bool = False) -> None:
     """Write *msg* to the logger.

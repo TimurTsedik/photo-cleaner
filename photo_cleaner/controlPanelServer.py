@@ -10,6 +10,7 @@ from pathlib import Path
 from threading import Lock, Thread
 
 import falcon
+from photo_cleaner.logging_config import log
 from photo_cleaner.infrastructure.configLoader import (
     ConfigLoader,
 )
