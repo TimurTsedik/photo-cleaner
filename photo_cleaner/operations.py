@@ -86,7 +86,7 @@ class PhotoCleanerOperations:
             set(config["files"]["rawExtensions"]),
             excludedPrefixes,
         )
-        print("scan completed")
+        log("scan completed", level="info", user=True)
 
     def runBuildDuplicatesReport(
         self,
@@ -101,7 +101,7 @@ class PhotoCleanerOperations:
         hasherService.hashDuplicateCandidates(
             config["archive"]["root"],
         )
-        print("hash duplicates completed")
+        log("hash duplicates completed", level="debug")
 
         reportService = DuplicateReportService(
             repository,
@@ -240,7 +240,7 @@ class PhotoCleanerOperations:
         config = self._loadConfig()
         self._buildRepository(config)
 
-        print("train-orientation-model bootstrap...", flush=True)
+        log("train-orientation-model bootstrap...", level="info", user=True)
         print("train-orientation-model importing modules...", flush=True)
         print("train-orientation-model modules imported", flush=True)
 
